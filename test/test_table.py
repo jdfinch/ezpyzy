@@ -630,3 +630,9 @@ def test_save_and_load():
         "Something weather"
     ]
     assert isinstance(loaded.id, ez.IDColumn)
+
+def test_create_table_from_rows_anonymous_columns():
+    table = ez.Table.of([[1, 2, 3],[4, 5, 6]])
+    assert list(table.A) == [1, 4]
+    assert list(table.B) == [2, 5]
+    assert list(table.C) == [3, 6]

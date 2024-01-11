@@ -5,17 +5,17 @@ import typing as T
 
 
 
-class AutosavedFunction:
+class AutocachedFunction:
 
     def __init__(self, fn, format):
         self.fn = fn
         self.format = format
 
     def __call__(self, *args, save=None, load=None, **kwargs):
-        if load and not save:
+        if load is not None:
             return file.File(load).load()
         result = self.fn(*args, **kwargs)
-        if save or save is None and load is None:
+        if save is not None:
             f = file.File(save, format=self.format)
             f.save(result)
         return result
@@ -23,10 +23,10 @@ class AutosavedFunction:
 
 F = T.TypeVar('F')
 
-def autosave(fn:F=None, *, format=None) -> F | AutosavedFunction:
+def autocache(fn:F=None, *, format=None) -> F | AutocachedFunction:
     if fn is None:
-        return lambda fn: autosave(fn, format=format)
-    return AutosavedFunction(fn, format=format)
+        return lambda fn: autocache(fn, format=format)
+    return AutocachedFunction(fn, format=format)
 
 
 

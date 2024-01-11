@@ -15,6 +15,7 @@ import textwrap as tw
 import inspect as ins
 import sys
 import weakref as wr
+import itertools as it
 import typing as T
 
 
@@ -51,7 +52,6 @@ def column_base_type_map(column):
         return ListColumn
 
 
-
 T1 = T.TypeVar('T1', bound='Table')
 
 @dc.dataclass
@@ -86,7 +86,7 @@ class Table:
         return self().display()
 
     def __repr__(self):
-        return f"<{self._name} Table: {', '.join(c.name for c in self())}>"
+        return f"<{self._name} {'Table' if self._name != 'Table' else ''}: {', '.join(c.name for c in self())}>"
 
     @classmethod
     def of(
@@ -129,15 +129,14 @@ class Table:
                     data = [row().dict() for row in data]
                     first_row = next(iter(data))
                 if isinstance(first_row, list):
-                    columns = {}
-                    for empty_column, *column_data in zip(table(), *data):
-                        column = column_types[empty_column.name](items=column_data, name=empty_column.name)
-                        columns[column.name] = column
+                    table_cols = list(table()) + [Column() for _ in range(len(first_row) - len(table()))]
                     for name in table().column_names:
                         delattr(table, name)
                     table._columns.clear()
-                    for name, column in columns.items():
-                        setattr(table, name, column)
+                    for empty_column, *column_data in zip(table_cols, *data):
+                        column_type = column_types.get(empty_column.name, ListColumn)
+                        column = column_type(items=column_data, name=empty_column.name)
+                        table._set_attr(column.name, column)
                 elif isinstance(first_row, dict):
                     columns = {}
                     for i, row in enumerate(data):
@@ -167,6 +166,12 @@ class Table:
         return table
 
     def _set_attr(self, key, value):
+        if key is None:
+            existing_col_names = {col.name for col in self()}
+            for name in it.cycle(ez.digital_iteration("ABCDEFGHIJKLMNOPQRSTUVWXYZ")):
+                if name not in existing_col_names:
+                    key = name
+                    break
         if isinstance(value, Column) and '_columns' in vars(self):
             assert not self() or len(value) == len(self), \
                 f'Column {key} has {len(value)} rows, but table has {len(self())} rows'
@@ -826,7 +831,9 @@ class Meta(T.Generic[T2]):
             max_col_widths = [min(mcw, max_cell_width) for mcw in max_col_widths]
         rows = list(zip(*columns))
         rows = rows[:max_num_rows+1] if max_num_rows is not None else rows
-        formatted_rows = [f"{self.name} Table: {len(self):,} cols x {len(self.table):,} rows"]
+        formatted_rows = [
+            f"{self.name} {'Table' if self.name != 'Table' else ''}: {len(self):,} cols x {len(self.table):,} rows"
+        ]
         for row in rows:
             row = '|'.join(
                 f'{cell if len(cell) <= mcw else cell[:mcw-2]+"..":{mcw}s}'

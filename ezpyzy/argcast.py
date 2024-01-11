@@ -1,6 +1,9 @@
 """
 Problem: properly type annotate an argument with all of its options, but also cast those options into a single type.
 """
+
+from __future__ import annotations
+
 import functools
 import inspect
 import types
@@ -75,7 +78,7 @@ def argcast(fn: F=None, **params_included_or_excluded) -> F:
 if __name__ == '__main__':
 
     ta: T.TypeAlias = T.Union['Bar', set, frozenset, dict]
-    tb = set | dict
+    tb = T.Union[set, dict]
 
 
     @argcast(y=frozenset)

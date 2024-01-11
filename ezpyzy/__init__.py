@@ -3,13 +3,14 @@ from __future__ import annotations
 import typing as T
 from ezpyzy.allargs import allargs
 from ezpyzy.argcast import argcast
-from ezpyzy.autosave import autosave
+from ezpyzy.autocache import autocache
 from ezpyzy.batch import batch, batched
 from ezpyzy.bind import bind
 from ezpyzy.captured_vars import CapturedVars
 from ezpyzy.check import check
 from contextlib import nullcontext as collapsable
 from ezpyzy.denominate import denominate
+from ezpyzy.digital_iteration import digital_iteration
 from ezpyzy.file import File, filelike
 from ezpyzy.format import Savable, Text, CSV, JSON, Bytes, Pickle, formatlike
 from ezpyzy.option import option
