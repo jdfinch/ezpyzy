@@ -1,7 +1,7 @@
 
 
 import atexit
-import ezpyz as ez
+import ezpyzy as ez
 import dataclasses as dc
 import collections as col
 import pathlib as pl

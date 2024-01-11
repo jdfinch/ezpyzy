@@ -1,5 +1,6 @@
+from __future__ import annotations
 
-from ezpyz import file
+from ezpyzy import file
 import typing as T
 
 

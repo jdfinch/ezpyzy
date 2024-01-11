@@ -8,7 +8,7 @@ Use the caches.cached or Cache.cached methods in cache.py, specifying sources an
 
 
 
-from ezpyz.cache import Cache, caches
+from ezpyzy.cache import Cache, caches
 
 import typing as T
 

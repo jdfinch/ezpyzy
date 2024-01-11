@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import random
 
-from ezpyz.file import File
+from ezpyzy.file import File
 
 
 adjectives = [

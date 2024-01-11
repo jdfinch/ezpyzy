@@ -9,7 +9,7 @@ import sys
 import traceback as tb
 import io
 import textwrap as tw
-from ezpyz.timer import Timer
+from ezpyzy.timer import Timer
 
 
 class Check:

@@ -1,18 +1,18 @@
 
-# ezpyz
+# ezpyzy
 
-A simple python package to make your life easier.
+Utility functions solving common but annoying problems.
 
 ## Installation
 
 ```bash
-pip install ezpyz
+pip install ezpyzy
 ```
 
 ## Usage
 
 ```python
-import ezpyz as ez
+import ezpyzy as ez
 ```
 
 

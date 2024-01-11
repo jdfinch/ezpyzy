@@ -1,5 +1,5 @@
 
-import ezpyz.table as ez
+import ezpyzy.table as ez
 import dataclasses as dc
 import pytest
 import typing as T
@@ -622,8 +622,8 @@ def test_save_and_load():
         ["What's your deal?", "Alex", "d3", 3, 'b'],
         ["Something weather", "Alex", "d3", 5, 'c']
     ])
-    turns().save('testfile.csv')
-    loaded = Turn.of('testfile.csv')
+    turns().save('test/foo/testfile.csv')
+    loaded = Turn.of('test/foo/testfile.csv')
     assert list(loaded.text) == [
         "Hello my name is Sam, how are you?",
         "What's your deal?",

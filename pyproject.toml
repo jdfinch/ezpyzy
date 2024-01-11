@@ -1,12 +1,12 @@
 [tool.poetry]
-name = "ezpyz"
+name = "ezpyzy"
 version = "0.1.0"
 description = "utility functions solving common but annoying problems"
 authors = ["jdfinch <jdfinch@emory.edu>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "^3.8"
 
 
 [build-system]

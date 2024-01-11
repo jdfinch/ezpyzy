@@ -5,8 +5,8 @@ Each file is loaded only once, and the content is cached in memory.
 """
 
 
-from ezpyz.file import File, filelike, formatlike
-import ezpyz.format as fmt
+from ezpyzy.file import File, filelike, formatlike
+import ezpyzy.format as fmt
 
 import pathlib
 import dataclasses

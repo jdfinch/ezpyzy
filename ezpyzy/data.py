@@ -6,9 +6,9 @@ import pickle
 import io
 import typing as T
 
-import ezpyz
-from ezpyz.file import filelike, formatlike, File
-from ezpyz.cache import Cache
+import ezpyzy
+from ezpyzy.file import filelike, formatlike, File
+from ezpyzy.cache import Cache
 
 
 C = T.TypeVar('C')
@@ -37,7 +37,7 @@ class DataMeta(abc.ABCMeta):
 @dataclasses.dataclass
 class Data(abc.ABC, metaclass=DataMeta):
     _file: filelike | None = None
-    format: T.ClassVar[formatlike|None] = ezpyz.format.Pickle
+    format: T.ClassVar[formatlike|None] = ezpyzy.format.Pickle
 
     serialized_in_binary: T.ClassVar[bool] = True
 

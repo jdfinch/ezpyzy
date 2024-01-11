@@ -1,6 +1,6 @@
 
 import atexit
-import ezpyz as ez
+import ezpyzy as ez
 import pathlib as pl
 import typing as T
 

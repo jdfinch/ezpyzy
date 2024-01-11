@@ -1,10 +1,11 @@
+
 import signal
 import shutil
 import os
 import pathlib as pl
 import pickle as pkl
 
-import ezpyz as ez
+import ezpyzy as ez
 
 
 shutil.rmtree('test/foo', ignore_errors=True)

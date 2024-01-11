@@ -7,6 +7,8 @@ Two utilities are provided:
 `replace` is an in-place (mutating) version of dataclasses.replace, and can be used as a context manager to undo the mutations (puts back the attributes entered with) upon exiting the context.
 """
 
+from __future__ import annotations
+
 from dataclasses import replace
 import functools
 import inspect
@@ -45,15 +47,15 @@ def replace_inplace(obj, **kwargs):
 sys.modules[__name__].__dict__.update(replace=replace_inplace)
 
 
-def undefault(default=None, settings_:dict = None, /, **settings):
-    if settings_ is not None:
-        settings = {**settings_, **settings}
-    return {k: v for k, v in settings.items() if v is not default}
+def undefault(__default__=None, __settings__:dict = None, /, **settings):
+    if __settings__ is not None:
+        settings = {**__settings__, **settings}
+    return {k: v for k, v in settings.items() if v is not __default__}
 
 
 
 if __name__ == '__main__':
-
+    '''
     import dataclasses
 
     @dataclasses.dataclass
@@ -84,7 +86,7 @@ if __name__ == '__main__':
 
     print(f'{foo.show() = }')
     print(f'{foo.show("hello world") = }')
-
+    '''
 
 
 

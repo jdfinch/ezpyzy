@@ -34,9 +34,9 @@ def short_uuid(length=length):
 
 if __name__ == '__main__':
     x = short_uuid()
-    print(f"{len(alphabet)=}")
+    # print(f"{len(alphabet)=}")
     print(x)
-    print(f"{len(x)=}")
-    print(f"{sys.getsizeof(x)=}")
-    print(f"{sys.getsizeof('')=}")
-    print(f"{sys.getsizeof(str(uuid.uuid4()))=}")
+    # print(f"{len(x)=}")
+    # print(f"{sys.getsizeof(x)=}")
+    # print(f"{sys.getsizeof('')=}")
+    # print(f"{sys.getsizeof(str(uuid.uuid4()))=}")

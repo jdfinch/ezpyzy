@@ -1,98 +1,64 @@
+
 import atexit as atx
 import io
 import signal as sig
 import pathlib as pl
 import os
 import datetime as dt
-import weakref as wr
-import ezpyz.format
 
-from ezpyz.bind import bind
+from ezpyzy.bind import bind
 
 import typing as T
 
 filelike: T.TypeAlias = T.Union[str, pl.Path, io.IOBase, 'File']
 
+class Format(T.Protocol):
+    is_binary: bool
+    def serialize(obj: ...) -> str|bytes: pass
+    @classmethod
+    def deserialize(cls, string:str|bytes) -> T.Any: pass
 
-files: wr.WeakValueDictionary[pl.Path, 'File'] = wr.WeakValueDictionary()
-_autosaving = set() # strong references for autosaved files
 
-D = T.TypeVar('D')
+formatlike = T.Union[str, Format, type[Format], None]
+
+files: dict[pl.Path, 'File'] = {}
+
+formats: dict[str, type[Format]] = {}
 
 
-class File(T.Generic[D]):
+class File:
 
-    def __new__(
-        cls,
+    def __new__(cls,
         path: filelike,
-        data:D=None,
-        format: ezpyz.format.Format | type[ezpyz.format.Format] | str = None,
+        data=None,
+        format: Format | type[Format] | str = None,
         autosaving=None
     ):
         path = to_path(path)
         if path in files:
             return files[path]
         else:
-            file = super().__new__(cls)
-            files[path] = file
-            return file
+            return super().__new__(cls)
 
-    def __init__(
-        self,
-        path: filelike,
-        data:D=None,
-        format: ezpyz.format.formatlike= None,
-        autosaving=False
+    def __init__(self,
+        path:filelike,
+        data=None,
+        format:Format|type[Format]|str=None,
+        autosaving=None
     ):
         self._path: pl.Path = to_path(path)
         if not hasattr(self, 'data') or data is not None:
-            self.data:D = data
-        if not hasattr(self, '_format') or format is not None:
-            self._format: type[ezpyz.format.Format]|None = None
-            if format is not None:
-                self.format = to_format(format)
-        if not hasattr(self, '_autosaving'):
-            self._autosaving = autosaving
+            self.data: T.Any = data
+        if not hasattr(self, 'format') or format is not None:
+            self.format: type[Format] = to_format(self._path.suffix if format is None else format)
+        if not hasattr(self, 'autosaving') or autosaving is not None:
+            self.autosaving = autosaving
         if not hasattr(self, '_io'):
             self._io = None
-        if not hasattr(self, '_sync_time'):
-            self._sync_time = None
-
-    @property
-    def format(self):
-        if self._format is not None:
-            return self._format
-        data_format = type(self.data)
-        if (
-            hasattr(data_format, 'is_binary') and
-            hasattr(data_format, 'serialize') and
-            hasattr(data_format, 'deserialize')
-        ):
-            return type(self.data)
-        elif self._path.suffix in ezpyz.format.formats:
-            return ezpyz.format.formats[self._path.suffix]
-        else:
-            return ezpyz.format.Text
-
-    @format.setter
-    def format(self, format: ezpyz.format.formatlike):
-        self._format = to_format(format)
 
     @property
     def path(self):
         return self._path
-
-    @property
-    def autosaving(self):
-        return self._autosaving
-
-    @autosaving.setter
-    def autosaving(self, value):
-        if value:
-            _autosaving.add(self)
-        else:
-            _autosaving.remove(self)
-        self._autosaving = value
 
     @property
     def name(self):
@@ -110,103 +76,40 @@ class File(T.Generic[D]):
     def suffix(self):
         return self._path.suffix
 
-    def save(self, data=None, format: ezpyz.format.formatlike = None):
-        if data is None:
-            data = self.data
-        if format is None:
-            format = self.format
-        else:
-            format = to_format(format)
-        if self.autosaving:
-            self.data = data
-        if self.data is not None:
-            serialized = format.serialize(data)
-            self.write(serialized)
-        else:
-            os.remove(self._path)
-
-    def log(self, data=None, format: ezpyz.format.formatlike = None):
-        if data is None:
-            data = self.data
-        if format is None:
-            format = self.format
-        else:
-            format = to_format(format)
-        if self.autosaving:
-            self.data = data
-        if data is not None:
-            serialized = format.serialize(data)
-            self.append(serialized)
-
-    def load(self, format: ezpyz.format.formatlike = None):
-        if format is None:
-            format = self.format
-        else:
-            format = to_format(format)
-        if self._path.exists():
-            serialized = self.read()
-            data = format.deserialize(serialized)
-            return data
-
-    def pull(self, format: ezpyz.format.formatlike = None):
-        if format is not None:
-            self.format = format
-        file_stats = self.stats()
-        if self._path.exists() and (
-            self._sync_time is None or file_stats.modified_datetime > self._sync_time
-        ):
-            serialized = self.read()
-            self.data = self.format.deserialize(serialized)
-        else:
-            self.data = None
-        self._sync_time = dt.datetime.now()
-        return self
-
-    def push(self, data:D=None, format: ezpyz.format.formatlike = None):
+    def save(self, data=None, format:formatlike=None):
         if data is not None:
             self.data = data
         if format is not None:
-            self.format = format
+            self.format = to_format(format)
         if self.data is not None:
             serialized = self.format.serialize(self.data)
             self.write(serialized)
         else:
             os.remove(self._path)
-        self._sync_time = dt.datetime.now()
-        return self
 
-    def commit(self):
-        self._sync_time = dt.datetime.now()
-        return self
-
-    def revert(self, format: ezpyz.format.formatlike = None):
-        self._sync_time = None
-        return self.pull(format)
-
-    def init(self, data:D=None, format: ezpyz.format.formatlike=None, autosaving=True):
-        self._autosaving = autosaving
+    def log(self, data=None, format: formatlike=None):
         if data is not None:
             self.data = data
         if format is not None:
-            self.format = format
-        file_stats = self.stats()
-        if self._path.exists() and (
-            self._sync_time is None or file_stats.modified_datetime > self._sync_time
-        ):
+            self.format = to_format(format)
+        if self.data is not None:
+            serialized = self.format.serialize(self.data)
+            self.append(serialized)
+
+    def load(self, format: formatlike=None):
+        if format is not None:
+            self.format = to_format(format)
+        if self._path.exists():
             serialized = self.read()
             self.data = self.format.deserialize(serialized)
-        elif self.data is not None:
-            if not self.autosaving:
-                self.push(self.data, format)
-        else:
-            raise FileNotFoundError(f"File {self._path} does not exist and no data was provided for file init.")
-        self._sync_time = dt.datetime.now()
-        return self
+            return self.data
 
-    def delete(self):
-        if self._path.exists():
-            os.remove(self._path)
-        return self
+    def autosave(self, data=None, format=None):
+        if data is not None:
+            self.data = data
+        if format is not None:
+            self.format = to_format(format)
+        self.autosaving = True
 
     def write(self, serialized: str | bytes, offset=None):
         if self._io is None or self._io.closed():
@@ -310,7 +213,6 @@ class File(T.Generic[D]):
 
     def __str__(self):
         return f"File({'' if self._path is None else self._path})"
-
     __repr__ = __str__
 
 
@@ -358,29 +260,23 @@ def to_path(path: filelike) -> pl.Path:
     else:
         raise TypeError(f"Cannot convert {path} to pathlib.Path")
 
-
-def to_format(format: ezpyz.format.formatlike) -> type[ezpyz.format.Format]:
+def to_format(format: formatlike) -> type[Format]:
     if isinstance(format, str):
         if not format.startswith('.'):
             format = '.' + format
-        return ezpyz.format.formats[format]
+        return formats[format]
     elif format is None:
-        return ezpyz.format.Text
+        return formats['']
     elif isinstance(format, type):
-        return format  # noqa
+        return format # noqa
     else:
         return type(format)
 
 
-_already_saved_on_exit = False
 def save_on_exit():
-    global _already_saved_on_exit
-    if not _already_saved_on_exit:
-        for path, file in files.items():
-            if file.autosaving:
-                file.save()
-        _already_saved_on_exit = True
-
+    for path, file in files.items():
+        if file.autosaving:
+            file.save()
 
 def handle_signal(handler, signo, signal, frame):
     save_on_exit()
@@ -396,5 +292,4 @@ for signo in [
     sig.SIGTERM
 ]:
     sig.signal(signo, bind(handle_signal)(sig.getsignal(signo), signo))
-
 atx.register(save_on_exit)

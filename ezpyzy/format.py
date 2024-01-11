@@ -1,29 +1,35 @@
 
+from __future__ import annotations
+
 import abc
 import io
 import json
 import csv
 import pickle
-import ezpyz.file
+import ezpyzy.file
 import typing as T
 
 
-formatlike = T.Union[str, 'Format', type['Format'], None]
+formatlike = T.Union[str, 'Format', T.Type['Format'], None]
 
 formats: dict[str, type['Format']] = {}
 
 
-@T.runtime_checkable
-class Format(T.Protocol):
-    is_binary: bool
+class Format(abc.ABC):
 
+    @property
+    @abc.abstractmethod
+    def is_binary(self): pass
+
+    @abc.abstractmethod
     def serialize(obj: ...) -> str | bytes: pass
 
     @classmethod
+    @abc.abstractmethod
     def deserialize(cls, string: str | bytes) -> T.Any: pass
 
 
-class SavableMeta(Format, abc.ABCMeta):
+class SavableMeta(abc.ABCMeta):
 
     extensions = None
 
@@ -41,7 +47,7 @@ class SavableMeta(Format, abc.ABCMeta):
 
 
 
-class Savable(abc.ABC, metaclass=SavableMeta):
+class Savable(Format, abc.ABC, metaclass=SavableMeta):
 
     is_binary = False
 
@@ -53,7 +59,7 @@ class Savable(abc.ABC, metaclass=SavableMeta):
     def serialize(self: ...): pass
 
     def save(self: ..., path):
-        file = ezpyz.file.File(path, format=type(self))
+        file = ezpyzy.file.File(path, format=type(self))
         file.save(self)
 
     @classmethod

@@ -2,6 +2,8 @@
 Time things with a context manager. Nice display of time elapsed.
 """
 
+from __future__ import annotations
+
 import time
 import dataclasses
 

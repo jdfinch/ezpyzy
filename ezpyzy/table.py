@@ -4,7 +4,9 @@ Alternative to pandas and polars that doesn't make you want to kill yourself.
 More for machine learning dev than data exploration. If data exploration is your goal the existing alternatives provide a swiss army knife of built-in methods; table.py focuses on api consistency and concision of the most-used/fundamental data processing features instead.
 """
 
-import ezpyz as ez
+from __future__ import annotations
+
+import ezpyzy as ez
 import dataclasses as dc
 import pathlib as pl
 import io
@@ -1114,7 +1116,7 @@ class Column(T.Generic[TC]):
         return Column(items=results)
 
 
-class ColumnView(Column):
+class ColumnView(Column, T.Generic[TC]):
     def __new__(_cls, _column, *args, **kwargs):
         if isinstance(_column, list):
             _cls = ListColumnView
@@ -1132,7 +1134,7 @@ class ColumnView(Column):
     def _origin(self):
         return self._column._origin
 
-class ListColumn(list, Column):
+class ListColumn(list, Column, T.Generic[TC]):
     def __init__(self, items=(), name=None):
         list.__init__(self, items)
         Column.__init__(self, name=name)
@@ -1200,7 +1202,7 @@ class ListColumn(list, Column):
     _extend = list.extend
 
 
-class ListColumnView(list, ColumnView):
+class ListColumnView(list, ColumnView, T.Generic[TC]):
     def __init__(self, column:Column, indices:list[int], name=None):
         if isinstance(column, ColumnView):
             indices = [list.__getitem__(column, i) for i in indices] # noqa
