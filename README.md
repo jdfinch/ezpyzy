@@ -161,7 +161,7 @@ Kind of like if jupyter notebook had a baby with using a bunch of print statemen
 
 ```python
 data = load_data_for_a_long_time()
-explore() # Prints nearby variables and pauses execution
+ez.explore() # Prints nearby variables and pauses execution
 
 process_data() # will not run yet
 ```
@@ -172,7 +172,7 @@ After moving the `explore()` call and hitting enter...
 data = load_data_for_a_long_time() # will not run again
 
 process_data() # will run now
-explore() # Prints nearby variables and pauses execution
+ez.explore() # Prints nearby variables and pauses execution
 ```
 
 ### Dataframes but with type hinting
