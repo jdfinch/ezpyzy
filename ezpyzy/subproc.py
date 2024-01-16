@@ -34,7 +34,7 @@ def subproc(fn_or_module, *args, **kwargs):
 
 
 # if __name__ == '__main__':
-#     from bullseye.model.llama import load_merge_and_save_lora
+#     from language_model.model.llama import load_merge_and_save_lora
 #     subproc(load_merge_and_save_lora, 'ex/test/Llama/lora_capital_langs')
 
 

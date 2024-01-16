@@ -66,12 +66,13 @@ class Foo:
     b: int
     c: int
 
-    @ez.settings
+    @ez.update_settings
     def bar(self, a=None, b=None, c=None):
         return a + b + c
 
+
 foo = Foo(0, 1, 2)
-print(foo.bar(5)) # Prints 8
+print(foo.bar(5))  # Prints 8
 ```
 
 ### Replace dataclass attributes by mutation with type hinting

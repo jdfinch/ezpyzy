@@ -9,7 +9,9 @@ Two utilities are provided:
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import replace
+from dataclasses import dataclass as settings
 import functools
 import inspect
 import contextlib
@@ -17,7 +19,7 @@ import sys
 import typing as T
 
 F1 = T.TypeVar('F1')
-def settings(fn:F1) -> F1:
+def update_settings(fn:F1) -> F1:
     signature = inspect.signature(fn)
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
@@ -44,7 +46,8 @@ def replace_inplace(obj, **kwargs):
     return context_manager
 
 
-sys.modules[__name__].__dict__.update(replace=replace_inplace)
+vars().update(replace=replace_inplace)
+'''Magical swap to retain dataclasses.replace type hinting on ez.replace'''
 
 
 def undefault(__default__=None, __settings__:dict = None, /, **settings):
@@ -53,43 +56,49 @@ def undefault(__default__=None, __settings__:dict = None, /, **settings):
     return {k: v for k, v in settings.items() if v is not __default__}
 
 
+F2 = T.TypeVar('F2')
+def specified(fn: F2) -> F2:
+    """
+    Decorator capturing all arguments passed to the function into a parameter named 'specified' (or into an attribute named 'specified' of the first argument if the function is a method).
+    """
+    sig = inspect.signature(fn)
+    if 'specified' in sig.parameters:
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            specified = sig.bind(*args, **kwargs).arguments
+            return fn(*args, specified=specified, **kwargs)
+    else:
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            specified = sig.bind(*args, **kwargs).arguments
+            self_param = next(iter(specified))
+            self_arg = specified[self_param]
+            del specified[self_param]
+            self_arg.specified = specified
+            return fn(*args, **kwargs)
+    return wrapper
+
+
+C1 = T.TypeVar('C1')
+
+def __settings__(cls: C1) -> C1:
+    cls = dataclasses.dataclass(cls)
+    cls.__init__ = specified(cls.__init__) # noqa
+    return cls
+
+vars().update(settings=__settings__)
+
 
 if __name__ == '__main__':
-    '''
-    import dataclasses
 
-    @dataclasses.dataclass
+    @settings
     class Foo:
-        x: int
-        y: str
-        z: list[str]
+        a: int = 0
+        b: int = 1
+        c: int = 2
+        d: str = 'three'
 
-        @settings
-        def show(self, y=None):
-            return f"x={self.x}, y={y}, z={self.z}"
-
-
-    foo = Foo(1, '3', ['4'])
-    print(f'{foo = }')
-
-    replace(foo, x=2)
-    print(f'{foo = }')
-
-    with replace(foo, x=9, z=['9']):
-        print(f'    {foo = }')
-        with replace(foo, y='9'):
-            print(f'        {foo = }')
-        print(f'    {foo = }')
-
-    print(f'{foo = }')
-    print()
-
-    print(f'{foo.show() = }')
-    print(f'{foo.show("hello world") = }')
-    '''
-
-
-
-
-
+    foo = Foo(b=4, c=5)
+    print(foo)
+    print(getattr(foo, 'specified'))
 
