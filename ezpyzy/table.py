@@ -858,6 +858,14 @@ class Meta(T.Generic[T2]):
         for dc_field in dc.fields(type(self.table)):
             if dc_field.name not in self.column_names:
                 setattr(self.table, dc_field.name, ListColumn([value] * len(self.table), name=dc_field.name))
+        return self
+
+    def spec(self):
+        spec = {}
+        column_types = column_type_map(self.table)
+        for dc_field in dc.fields(type(self.table)):
+            spec[dc_field.name] = column_types[dc_field.name]
+        return self
 
     def apply(self, fn:callable, processes:int=1):
         sig = ins.signature(fn)
