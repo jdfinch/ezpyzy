@@ -28,6 +28,7 @@ ColStr = T.Union[Column[str], str, None]
 ColInt = T.Union[Column[int], int, None]
 ColBool = T.Union[Column[bool], bool, None]
 ColFloat = T.Union[Column[float], float, None]
+ColObj = T.Union[Column[T.Any], T.Any, None]
 ColID = T.Union[IDColumn[str], str, None]
 from ezpyzy.timer import Timer
 

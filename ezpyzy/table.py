@@ -19,6 +19,9 @@ import itertools as it
 import typing as T
 
 
+default = object()
+
+
 def column_type_map(tabletype):
     if not isinstance(tabletype, type):
         tabletype = type(tabletype)
@@ -96,7 +99,8 @@ class Table:
             T.Mapping[str, T.Collection],
             'Table',
             ez.filelike
-        ]
+        ],
+        fill: T.Any = default,
     ) -> T1:
         if len(datas) == 1 and isinstance(datas[0], (str, pl.Path, io.IOBase, ez.File)):
             csv_data = ez.File(datas[0]).load()
@@ -163,6 +167,8 @@ class Table:
         table = tables[0]
         for other in tables[1:]:
             table += other
+        if fill is not default:
+            table().fill(fill)
         return table
 
     def _set_attr(self, key, value):
@@ -847,6 +853,11 @@ class Meta(T.Generic[T2]):
             sep = sep[:max_row_width]
         formatted_rows.insert(2, sep)
         return '\n'.join(formatted_rows)
+
+    def fill(self, value=None):
+        for dc_field in dc.fields(type(self.table)):
+            if dc_field.name not in self.column_names:
+                setattr(self.table, dc_field.name, ListColumn([value] * len(self.table), name=dc_field.name))
 
     def apply(self, fn:callable, processes:int=1):
         sig = ins.signature(fn)
