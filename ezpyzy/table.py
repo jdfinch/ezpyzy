@@ -286,7 +286,7 @@ class Table:
                 cols = selects
             else:
                 raise TypeError(f'Invalid column type {type(selects[0])} of {selects[0]} in selection {selects}')
-        elif isinstance(selects, Column):
+        elif isinstance(selects, Column) and selects.name is not None:
             cols = [selects]
         elif isinstance(selects, slice):
             rows = list(range(*selects.indices(len(self))))
@@ -910,7 +910,7 @@ class Meta(T.Generic[T2]):
                 key = [key(row) for row in self.table] # noqa
         assert len(key) == len(self.table), \
             f'Key must have same length as table, but got {len(key)} != {len(self)}'
-        items = sorted(zip(key, range(len(self))), reverse=reverse)
+        items = sorted(zip(key, range(len(self.table))), reverse=reverse)
         keys, indices = zip(*items)
         old_to_new_indices = [None] * len(indices)
         for i, index in enumerate(indices):
