@@ -31,21 +31,22 @@ def column_type_map(tabletype):
                 break
         else:
             raise TypeError(f'Object {tabletype} is not a Table subclass or instance')
-    column_types = {} # name: type
+    column_types = {} # name: (type, element type)
     for field in dc.fields(tabletype):
+        backup_element_type = str
         coltype = field.type
         origin = T.get_origin(coltype)
-        if origin and Column in getattr(origin, '__mro__', ()):
-            coltype = origin
-        union = T.get_args(coltype)
-        while union and not Column in getattr(coltype, '__mro__', ()):
-            coltype = union[0]
-            origin = T.get_origin(coltype)
-            if origin and Column in getattr(origin, '__mro__', ()):
-                coltype = origin
-            union = T.get_args(coltype)
-        if Column in getattr(coltype, '__mro__', ()):
-            column_types[field.name] = coltype
+        typeargs = T.get_args(coltype)
+        while origin and Column not in getattr(origin, '__mro__', ()):
+            if hasattr(typeargs, '__iter__'):
+                for candidate in typeargs:
+                    if candidate in (str, int, float, bool):
+                        backup_element_type = candidate
+                        break
+                coltype = typeargs[0]
+                origin = T.get_origin(coltype)
+                typeargs = T.get_args(coltype)
+        column_types[field.name] = (coltype, typeargs[0] if typeargs else backup_element_type)
     return column_types
 
 def column_base_type_map(column):
@@ -69,7 +70,7 @@ class Table:
         self._right_joined: Table|None = None
         self._columns: dict[str|tuple[[str]], Column] = {}
         self._path:pl.Path|None = None
-        column_types = column_type_map(self)
+        column_types = {k: v[0] for k, v in column_type_map(self).items()}
         assert len({len(column) for column in vars(self).values() if isinstance(column, Column)}) <= 1, \
             f'Columns must have the same number of rows, but got columns ' \
             f'{", ".join(column.name for column in vars(self).values() if isinstance(column, Column))} ' \
@@ -102,14 +103,21 @@ class Table:
         ],
         fill: T.Any = default,
     ) -> T1:
-        if len(datas) == 1 and isinstance(datas[0], (str, pl.Path, io.IOBase, ez.File)):
-            csv_data = ez.File(datas[0]).load()
-            csv_columns = {col[0]: col[1:] for col in zip(*csv_data)}
-            datas = (csv_columns,)
         tables = []
         for data in datas:
             table = cls()
             column_types = column_type_map(table)
+            if isinstance(data, (str, pl.Path, io.IOBase, ez.File)):
+                csv_data = ez.File(data).load()
+                data = {col[0]: col[1:] for col in zip(*csv_data)}
+                for col_name, col_vals in list(data.items()):
+                    col_elements_type = column_types.get(col_name, (None, str))[1]
+                    if col_elements_type is not str:
+                        data[col_name] = [
+                            col_elements_type(val)
+                            if val else None
+                            for val in col_vals
+                        ]
             if isinstance(data, Table):
                 for var, val in list(vars(table).items()):
                     if isinstance(val, Column):
@@ -123,7 +131,8 @@ class Table:
                     if isinstance(val, Column):
                         table._del_column(val)
                 for name, column_data in data.items():
-                    setattr(table, name, column_types.get(name, Column)(items=column_data, name=name))
+                    col_type = column_types.get(name, (Column, None))[0]
+                    setattr(table, name, col_type(items=column_data, name=name))
             elif isinstance(data, list):
                 if not data:
                     del table[0]
@@ -138,7 +147,7 @@ class Table:
                         delattr(table, name)
                     table._columns.clear()
                     for empty_column, *column_data in zip(table_cols, *data):
-                        column_type = column_types.get(empty_column.name, ListColumn)
+                        column_type = column_types.get(empty_column.name, (ListColumn, None))[0]
                         column = column_type(items=column_data, name=empty_column.name)
                         table._set_attr(column.name, column)
                 elif isinstance(first_row, dict):
@@ -157,7 +166,8 @@ class Table:
                         delattr(table, name)
                     table._columns.clear()
                     for name, column_data in columns.items():
-                        column = column_types.get(name, Column)(items=column_data, name=name)
+                        col_type = column_types.get(name, (Column, None))[0]
+                        column = col_type(items=column_data, name=name)
                         setattr(table, name, column)
                 else:
                     raise TypeError(f'Invalid data type {type(first_row)}')
@@ -357,20 +367,25 @@ class Table:
                     f'Number of mutation values ({num_value_rows}) != number of rows selected ({len(selects)}):\n {values}'
                 return
             valcols = list(zip(*values))
+            first_select = selects[0]
+            if isinstance(first_select, bool):
+                selects = [i for i, b in enumerate(selects) if b]
+            elif isinstance(first_select, str):
+                id_column = self().id
+                assert id_column is not None, \
+                    f'Cannot select rows by ID because Table {self} has no ID column'
+                selects = [dict.__getitem__(self().id._ids, key) for key in selects]
+            elif isinstance(first_select, list):
+                raise NotImplementedError("Scatter is not implemented")
             assert len(selects) == len(values), \
                 f'Number of mutation values ({len(values)}) != number of rows selected ({len(selects)}):\n {values}'
-            first_select = selects[0]
             if isinstance(first_select, int):
                 assert len(self()) == len(valcols), \
                     f'Number of mutation values ({len(valcols)}) != number of columns ({len(self())}) in Table {self}:\n {values}'
                 for column, value in zip(self(), valcols):
                     column[selects] = value
-            elif isinstance(first_select, str):
-                raise NotImplementedError("ID selection is not implemented")
-            elif isinstance(first_select, list):
-                raise NotImplementedError("Scatter is not implemented")
             else:
-                raise TypeError(f'Invalid selection type {type(selects[0])} of {selects[0]}')
+                raise TypeError(f'Invalid selection type {type(first_select)}')
         else:
             raise TypeError(f'Invalid selection type {type(selects)} of {selects}')
 
@@ -746,8 +761,6 @@ class Meta(T.Generic[T2]):
     def path(self, path:ez.filelike):
         self.table._path = ez.File(path).path
     def save(self, path:ez.filelike=None):
-        assert self.table._path is not None or path is not None, \
-            f'Table {self.table} has no path set, and no path was provided'
         file = ez.File(path or self.table._path, format='csv')
         columns = [[col.name]+list(col) for col in self.columns]
         rows = zip(*columns)
@@ -943,43 +956,48 @@ class Meta(T.Generic[T2]):
         return groups
 
 
+class ColumnOpsTypeHinting:
+    def __and__(self, other): pass
+    def __iand__(self, other): pass
+    def __or__(self, other): pass
+    def __ior__(self, other): pass
+    def __lshift__(self, other): pass
+    def __ilshift__(self, other): pass
+    def __rshift__(self, other): pass
+    def __irshift__(self, other): pass
+    def __xor__(self, other): pass
+    def __ixor__(self, other): pass
+    def __matmul__(self, other): pass
+    def __imatmul__(self, other): pass
+    def __add__(self, other): pass
+    def __iadd__(self, other): pass
+    def __sub__(self, other): pass
+    def __isub__(self, other): pass
+    def __mul__(self, other): pass
+    def __imul__(self, other): pass
+    def __truediv__(self, other): pass
+    def __itruediv__(self, other): pass
+    def __floordiv__(self, other): pass
+    def __ifloordiv__(self, other): pass
+    def __mod__(self, other): pass
+    def __imod__(self, other): pass
+    def __pow__(self, other): pass
+    def __ipow__(self, other): pass
+    def __lt__(self, other): pass
+    def __le__(self, other): pass
+    def __eq__(self, other): pass
+    def __ne__(self, other): pass
+    def __gt__(self, other): pass
+    def __ge__(self, other): pass
+    def __neg__(self): pass
+    def __pos__(self): pass
+    def __abs__(self): pass
 
 
-TC = T.TypeVar('TC')
 
-class Column(T.Generic[TC]):
-    def __new__(_cls, *args, **kwargs):
-        if _cls is DictColumn:
-            _obj = dict.__new__(_cls)
-        else:
-            _cls = ListColumn
-            _obj = list.__new__(_cls)
-        return _obj
-    def __init__(self, items:T.Iterable[TC]=(), name:str=None):
-        self.name:str|None = name
-        self._origin = None
-        self._views = wr.WeakValueDictionary()
-    def __call__(self, new_value=None):
-        if new_value is not None:
-            self[0] = new_value
-        return next(iter(self))
-    def __len__(self) -> int: ...
-    def __iter__(self) -> T.Iterator[TC]: ...
-    def __getitem__(self, key) -> TC: ...
-    def __setitem__(self, key, value:TC|T.Iterable[TC]): ...
-    def __delitem__(self, key): ...
-    def base(self) -> 'Column':
-        while hasattr(self, '_column'):
-            self = self._column
-        return self
-    def table(self) -> Table:
-        table = Table.of({})
-        table._set_attr(self.name, self)
-        table._name = self.name
-        table._origin = self._origin
-        return table
-    def extend(self, values:T.Iterable[TC]):
-        raise TypeError(f'Column of type {type(self)} does not support extend: {self}')
+T3 = T.TypeVar('T3', bound='Column')
+
+class ColumnOps(T.Generic[T3]):
     def __and__(self, other):
         return self.table() & other
     def __iand__(self, other):
@@ -1142,6 +1160,43 @@ class Column(T.Generic[TC]):
         return Column(items=results)
 
 
+TC = T.TypeVar('TC')
+
+class Column(ColumnOpsTypeHinting, T.Generic[TC]):
+    def __new__(_cls, *args, **kwargs):
+        if _cls is DictColumn:
+            _obj = dict.__new__(_cls)
+        else:
+            _cls = ListColumn
+            _obj = list.__new__(_cls)
+        return _obj
+    def __init__(self, items:T.Iterable[TC]=(), name:str=None):
+        self.name:str|None = name
+        self._origin = None
+        self._views = wr.WeakValueDictionary()
+    def __call__(self, new_value=None):
+        if new_value is not None:
+            self[0] = new_value
+        return next(iter(self))
+    def __len__(self) -> int: ...
+    def __iter__(self) -> T.Iterator[TC]: ...
+    def __getitem__(self, key) -> TC: ...
+    def __setitem__(self, key, value:TC|T.Iterable[TC]): ...
+    def __delitem__(self, key): ...
+    def base(self) -> 'Column':
+        while hasattr(self, '_column'):
+            self = self._column
+        return self
+    def table(self) -> Table:
+        table = Table.of({})
+        table._set_attr(self.name, self)
+        table._name = self.name
+        table._origin = self._origin
+        return table
+    def extend(self, values:T.Iterable[TC]):
+        raise TypeError(f'Column of type {type(self)} does not support extend: {self}')
+
+
 class ColumnView(Column, T.Generic[TC]):
     def __new__(_cls, _column, *args, **kwargs):
         if isinstance(_column, list):
@@ -1160,7 +1215,7 @@ class ColumnView(Column, T.Generic[TC]):
     def _origin(self):
         return self._column._origin
 
-class ListColumn(list, Column, T.Generic[TC]):
+class ListColumn(ColumnOps, list, Column, T.Generic[TC]):
     def __init__(self, items=(), name=None):
         list.__init__(self, items)
         Column.__init__(self, name=name)
@@ -1215,6 +1270,8 @@ class ListColumn(list, Column, T.Generic[TC]):
         if isinstance(selection, (int, slice)):
             list.__setitem__(self, selection, values)
         elif isinstance(selection, list):
+            if selection and isinstance(selection[0], bool):
+                selection = [i for i, b in enumerate(selection) if b]
             assert len(selection) == len(values), \
                 f'Number of values ({len(values)}) does not match number of indices ({len(selection)})'
             for i, value in zip(selection, values):
@@ -1228,7 +1285,7 @@ class ListColumn(list, Column, T.Generic[TC]):
     _extend = list.extend
 
 
-class ListColumnView(list, ColumnView, T.Generic[TC]):
+class ListColumnView(ColumnOps, list, ColumnView, T.Generic[TC]):
     def __init__(self, column:Column, indices:list[int], name=None):
         if isinstance(column, ColumnView):
             indices = [list.__getitem__(column, i) for i in indices] # noqa
@@ -1285,6 +1342,8 @@ class ListColumnView(list, ColumnView, T.Generic[TC]):
         if isinstance(selection, (int, slice)):
             self._column[list.__getitem__(self, selection)] = values
         elif isinstance(selection, list):
+            if selection and isinstance(selection[0], bool):
+                selection = [i for i, b in enumerate(selection) if b]
             assert len(selection) == len(values), \
                 f'Number of values ({len(values)}) does not match number of indices ({len(selection)})'
             self._column[[list.__getitem__(self, i) for i in selection]] = values
@@ -1341,6 +1400,8 @@ class DictColumn(ListColumn[TC]):
                 for key, index in zip(list.__getitem__(self, selection), range(*selection.indices(len(self)))):
                     self._ids[key] = index
             elif isinstance(selection, list):
+                if selection and isinstance(selection[0], bool):
+                    selection = [i for i, b in enumerate(selection) if b]
                 assert len(selection) == len(values), \
                     f'Number of values ({len(values)}) does not match number of indices ({len(selection)})'
                 for i, value in zip(selection, values):

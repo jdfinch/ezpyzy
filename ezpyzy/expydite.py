@@ -245,8 +245,15 @@ def get_vars_in_order_of_last_assignment(module_code: str, before_index=None):
                     assigned_vars[name] = line_no
                     assigned_nodes[name] = node
     def visit_for(node):
-        if isinstance(node.response, ast.Name):
+        if hasattr(node, 'response') and isinstance(node.response, ast.Name):
             name = node.response.id
+            line_no = node.lineno
+            if before_index is None or line_no < before_index:
+                if line_no > assigned_vars.get(name, float('-inf')):
+                    assigned_vars[name] = line_no
+                    assigned_nodes[name] = node
+        elif hasattr(node, 'iter') and isinstance(node.iter, ast.Name):
+            name = node.iter.id
             line_no = node.lineno
             if before_index is None or line_no < before_index:
                 if line_no > assigned_vars.get(name, float('-inf')):
