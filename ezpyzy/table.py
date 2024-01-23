@@ -1193,8 +1193,6 @@ class Column(ColumnOpsTypeHinting, T.Generic[TC]):
         table._name = self.name
         table._origin = self._origin
         return table
-    def extend(self, values:T.Iterable[TC]):
-        raise TypeError(f'Column of type {type(self)} does not support extend: {self}')
 
 
 class ColumnView(Column, T.Generic[TC]):

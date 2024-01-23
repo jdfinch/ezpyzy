@@ -16,7 +16,7 @@ from ezpyzy.file import File, filelike
 from ezpyzy.format import Savable, Text, CSV, JSON, Bytes, Pickle, formatlike
 from ezpyzy.option import option
 # from ezpyzy.protocol import protocol
-from ezpyzy.settings import settings, update_settings, replace, undefault
+from ezpyzy.settings import settings, update_settings, replace, undefault, Settings
 from dataclasses import replace as copy
 from ezpyzy.send_email import send_email as email
 from ezpyzy.short_uuid import short_uuid as uuid

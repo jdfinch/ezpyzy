@@ -59,14 +59,14 @@ def undefault(__default__=None, __settings__:dict = None, /, **settings):
 F2 = T.TypeVar('F2')
 def specified(fn: F2) -> F2:
     """
-    Decorator capturing all arguments passed to the function into a parameter named 'specified' (or into an attribute named 'specified' of the first argument if the function is a method).
+    Decorator capturing all arguments passed to the function into a parameter named 'specified' (or into an attribute named 'settings' of the first argument if the function is a method).
     """
     sig = inspect.signature(fn)
-    if 'specified' in sig.parameters:
+    if 'settings' in sig.parameters:
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
             specified = sig.bind(*args, **kwargs).arguments
-            return fn(*args, specified=specified, **kwargs)
+            return fn(*args, settings=specified, **kwargs)
     else:
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
@@ -74,7 +74,7 @@ def specified(fn: F2) -> F2:
             self_param = next(iter(specified))
             self_arg = specified[self_param]
             del specified[self_param]
-            self_arg.specified = specified
+            self_arg.settings = specified
             return fn(*args, **kwargs)
     return wrapper
 
@@ -87,6 +87,10 @@ def __settings__(cls: C1) -> C1:
     return cls
 
 vars().update(settings=__settings__)
+
+
+class Settings:
+    settings = {}
 
 
 if __name__ == '__main__':
