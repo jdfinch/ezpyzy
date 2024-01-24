@@ -1,22 +1,38 @@
 
-# Table
+# ezpyzy Table
+
+## Import
+
+```python
+import ezpyzy as ez
+import dataclasses as dc
+```
 
 ## Define
 
 ```python
 @dc.dataclass
-class Turn(Table):
-    text:Column.str
-    speaker:Column.str = None
-    listener:Column.str = None
-    dialogue:Column.str = None
-    index:Column.int = None
-    id:Column.ID.str = None
+class Turn(ez.Table):
+    text: ez.ColStr = None
+    speaker: ez.ColStr = None
+    listener: ez.ColStr = None
+    dialogue: ez.ColStr = None
+    index: ez.ColInt = None
+    id: ez.ColID = None
 ```
+
+<details>
+<summary>Is all this notation necessary?</summary>
+
+Type hints like `ez.ColStr` are shorthand for `ez.Column[str] | str | None`, which is necessary to make type hinting work and for the `Table` constructor to discover the fields that should be considered columns and their types. When loading from .csv, the data is cast to the proper type based on this type annotation.
+
+Also, `None` default values are necessary for several Table operations.
+
+</details>
 
 ## Create
 
-Create a Table with a single example (can be joined with other examples)
+Create a Table with a single row like you would a normal object:
 
 ```python
 turn = Turn("Hello my name is Sam, how are you?")
@@ -27,7 +43,8 @@ turn = Turn(
 )
 ```
 
-Create a Table from a list of examples
+Use `Table.of` to create a table from data:
+
 ```python
 turns = Turn.of([
   ["Hello my name is Sam, how are you?", "Sam", "Alex", "d1", 0, None],
@@ -40,55 +57,91 @@ turns = Turn.of([
 ])
 ```
 
-Create a Table from columns
+
+Create a Table from a csv file (matches column names specified in the first csv row):
 ```python
-turns = Turn(
-    text=Column(["Hello my name is Sam, how are you?", "I'm okay, you?"]),
-    speaker=Column(["Sam", "Alex"]),
-    dialogue=Column(["d1", "d1"]),  
-    index=Column([0, 1])
-)
+turns = Turn.of('turns.csv')
 ```
 
-Copy a Table (also detaches from origin)
+<details>
+<summary>What if more columns are specified in Table definition than are in the .csv or data passed to .of?</summary>
+
+Columns are not created for those columns, but you can instead create them with placeholder data using `fill`:
+
 ```python
-copy = ~turns
+Table.of('turns.csv', fill=None)
+```
+</details>
+
+## Table Summary
+
+Display the table by printing it:
+
+```python
+print(table)
 ```
 
-## Table Metadata
-
-Table name, size, and columns can be accessed by calling the table.
-
-```python
-name = turns().name
-num_rows, num_cols = turns().size
-columns_dict = turns().columns
-origin = turns().origin
-id_column = turns().id
+```text
+Turn Table: 6 cols x 2 rows
+text                              |speaker|dialogue|index|listener|id          
+----------------------------------|-------|--------|-----|--------|------------
+Hello my name is Sam, how are you?|Sam    |d1      |0    |None    |XYMv7DDKmKt6
+I'm okay, you?                    |Alex   |d1      |1    |None    |Y4rzVeMHoFpZ
 ```
 
-Iterating over table metadata iterates over columns.
+Control the display:
+
 ```python
-for column in turns():
-    print(column.name)
+print(turns().display(max_cell_width=10))
 ```
 
-Whereas iterating over the table normally iterates over rows.
+```text
+Turn Table: 6 cols x 2 rows
+text      |speaker|dialogue|index|listener|id        
+----------|-------|--------|-----|--------|----------
+Hello my..|Sam    |d1      |0    |None    |LRh2VMuQ..
+I'm okay..|Alex   |d1      |1    |None    |Au6FhJUM..
+```
+
+Table rows:
+
 ```python
+num_rows = len(turns)
+
 for row in turns:
-    print(row.text)
+    ... # row is a Table itself,
+    ... # but views exactly one row from the original table
 ```
 
-Serialization and deserialization (json-style)
+Table columns:
+
 ```python
-serialized = turns().serialize()
-deserialized = Turn.deserialize(serialized)
-turns().save("turns.json")
-turns = Turn.load("turns.json")
+num_cols = len(turns())
+
+for col in turns():
+    ... # col is a reference to the Column object
+```
+
+Access a specific column:
+```python
+turn_text_col = turns.text
+```
+
+Rename columns:
+```python
+turns.new_name = turns.old_name
+
+turns.a, turns.b = turns.b, turns.a  # swap names
+```
+
+Save to .csv:
+
+```python
+turns().save('table.csv')
 ```
 
 
-## Attributes
+## Accessing Row Data
 
 ```python
 turn = Turn("Hello my name is Sam, how are you?", speaker="Sam")
@@ -96,6 +149,75 @@ turn = Turn("Hello my name is Sam, how are you?", speaker="Sam")
 text = turn.text()          # "Hello my name is Sam, how are you?"
 speaker = turn.speaker()    # "Sam"
 ```
+
+<details>
+<summary>Wait, what?</summary>
+Remember, `turn` is a table of only one row when using the normal `Turn` constructor. `turn.text` gives the text Column object. Calling a Column object returns the first item in the column. Thus, accessing cell data of single-row tables like `turn.text()` is a good pattern if you want to treat single-row tables like objects. 
+</details>
+
+
+## Selecting
+
+Selection returns a view of the origin that is selected from. Detaching (`~`) the selection view will return a copy of the selected data and remove the origin reference.
+
+Select rows by index
+```python
+row0: Table = table[0]
+row1_3: Table = table[1:3]
+rows_1_and_3: Table = table[[1, 3]]
+```
+
+Select rows by ID
+```python
+row_with_id_a: Table = table['a'] # uses first IDColumn
+rows_a_and_b: Table = table[['a', 'b']] # uses first IDColumn
+```
+
+Select rows by mask
+```python
+rows_above_2: Table = table[column > 2]
+```
+
+Select columns
+
+```python
+first_three_columns = table[table.column1, table.column2, table.column3]
+```
+
+## Copies and Views
+
+Copy a Table (also detaches from origin, so the copy is NOT attached to the original table in any way.)
+```python
+copy = ~turns
+```
+
+A common pattern is to select out some data and mutate it, but you don't want changes reflected in the original Table data. Use `~` to copy-and-detach in this case:
+
+```python
+copy_of_some = ~turns[turns.text, turns.speaker][1:3]
+```
+
+## Mutation
+
+Setting attributes of a single record.
+```python
+record.attribute("new_value")
+```
+
+Mutating joins use assignment-style syntax with the same operators. For example, a mutating inner join would look like:
+```python
+table1.column1 &= table2.column2
+```
+
+Data insertion. Data must be the same length as the number of rows, and each item must be the same length as the number of columns (alternatively, a Table can be used). Like other mutation operations, this modifies the origin table. In this example, the 1st and 3rd columns of the 3rd, 4th, and 5th rows are replaced with new string data.
+```python
+table[3:6][table.column1, table.column3] = [
+    ["new_value1", "new_value3"],
+    ["new_value2", "new_value4"],
+    ["new_value3", "new_value5"]
+]
+```
+
 
 ## Joins
 
@@ -180,59 +302,6 @@ Note that unpacking can be used to shuffle column names around, such as the foll
 table.column1, table.column2 = table.column2, table.column1
 ```
 
-## Selecting
-
-Selection returns a view of the origin that is selected from. Detaching (`~`) the selection view will return a copy of the selected data and remove the origin reference.
-
-Select rows by index
-```python
-row0: Table = table[0]
-row1_3: Table = table[1:3]
-rows_1_and_3: Table = table[[1, 3]]
-```
-
-Select rows by ID
-```python
-row_with_id_a: Table = table['a'] # uses first DictColumn
-rows_a_and_b: Table = table[['a', 'b']] # uses first DictColumn
-```
-
-Select rows by mask
-```python
-rows_above_2: Table = table[column > 2]
-```
-
-Select columns
-
-```python
-first_three_columns = table[table.column1, table.column2, table.column3]
-```
-
-Reorder columns (`...` is a wildcard for all other columns in their original order)
-```python
-reordered = table[table.column2, ..., table.column3, table.column1]
-```
-
-## Mutation
-
-Setting attributes of a single record.
-```python
-record.attribute("new_value")
-```
-
-Mutating joins use assignment-style syntax with the same operators. For example, a mutating inner join would look like:
-```python
-table1.column1 &= table2.column2
-```
-
-Data insertion. Data must be the same length as the number of rows, and each item must be the same length as the number of columns (alternatively, a Table can be used). Like other mutation operations, this modifies the origin table. In this example, the 1st and 3rd columns of the 3rd, 4th, and 5th rows are replaced with new string data.
-```python
-table[3:6][table.column1, table.column3] = [
-    ["new_value1", "new_value3"],
-    ["new_value2", "new_value4"],
-    ["new_value3", "new_value5"]
-]
-```
 
 ## Table-Wise Ops
 
@@ -253,40 +322,11 @@ Sorting rows. The input can be a key function, or an iterable of the same length
 table().sort(lambda row: row.column1())
 ```
 
-Grouping rows. The input can be a key function, or an iterable of the same length as the table to be used as a key (such as a specific column). The keys are equality-compared to determine groups. The result is a `Groups` object with the same interface as a table, but with operations applied independently to each group.
+Grouping rows. The return is a dict where keys are the grouping keys and values are Table views.
 
 ```python
-table().group(table.column1)
+groups = table().group(table.column1) # group by column 1
 ```
-
-To support merging groups back into a single table, a `Groups` object can be converted to a table with the `group` method with no args. This will concatenate all groups into a single table, and return a copy of the original table with the new data. Calling `.group()` on a Table instead of a Groups object just returns the original table.
-
-```python
-table().group(table.column1).apply(
-  lambda group: group.count.max()
-).group()
-```
-
-## Origination
-
-Tables and Columns that are derived through the following operations have a `.origin` attribute that points to the original table:
-
-* `&`, `<<`, `>>`, `|`, `^`, `/`, `-`, `+`, `*` (left table is origin)
-* table[...]
-* table.column
-* Table.of(table)
-* Table.of(table.column1, table.column2, ...)
-
-Origin-sensitive operations will condition operations on the provided arguments, but use the origin table to construct the result. These include:
-* Joins `&`, `<<`, `>>`, `|`, `^`, `*`
-* All column `.s` operations (e.g. `.s.max()`)
-
-A table or column can be detached from its origin with:
-```python
-detached = ~table
-```
-
-Detaching the origin copies the data from the original table with the origin reference removed in the copy.
 
 
 ## Column Operations
@@ -296,10 +336,10 @@ Column selection (copies data into a new column).
 ```python
 item0: Column = column[0]
 item1_3: Column = column[1:3]
-item_with_id_a: Column = column['a'] # DictColumn only
+item_with_id_a: Column = column['a'] # IDColumn only
 items_above_2: Column = column[column > 2]
 items_1_and_3: Column = column[[1, 3]]
-items_a_and_b: Column = column[['a', 'b']] # DictColumn only
+items_a_and_b: Column = column[['a', 'b']] # IDColumn only
 ```
 
 Column insertion (any iterable of the same length as the column can be used)
@@ -308,16 +348,6 @@ column[3] = 'new_value'
 column[1:3] = ['new_value1', 'new_value2']
 column[[1, 3]] = ['new_value1', 'new_value2']
 column[column > 2] = ['new_value1', 'new_value2']
-```
-
-Apply an arbitrary function (copying)
-```python
-one_up = column.map(lambda x: x + 1)
-```
-
-Apply a function to each item in the column (mutating)
-```python
-one_up = column.apply(lambda x: x + 1)
 ```
 
 Element-wise data operations
