@@ -48,3 +48,6 @@ class CapturedVars:
                 self._captured[name] = var
             elif self._capture_overwritten_vars and self._original_vars[name] is not var:
                 self._captured[name] = var
+
+    def __str__(self):
+        return f"CapturedVars({', '.join(key+': '+str(value) for key, value in self)})"

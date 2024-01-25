@@ -216,7 +216,7 @@ table[3:6][table.column1, table.column3] = [
     ["new_value2", "new_value4"],
     ["new_value3", "new_value5"]
 ]
-```
+```h
 
 
 ## Joins

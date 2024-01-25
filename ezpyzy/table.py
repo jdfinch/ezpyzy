@@ -750,6 +750,7 @@ class Table:
 
 
 T2 = T.TypeVar('T2', bound=Table)
+T4 = T.TypeVar('T4', bound='Table')
 
 class Meta(T.Generic[T2]):
     def __init__(self, table:T2):
@@ -872,6 +873,15 @@ class Meta(T.Generic[T2]):
             if dc_field.name not in self.column_names:
                 setattr(self.table, dc_field.name, ListColumn([value] * len(self.table), name=dc_field.name))
         return self
+
+    def extend(self, format:type[T4]) -> T4:
+        new = format.of(dict(___=[None]*len(self.table)))
+        for colname, col in self.table._columns.items():
+            if isinstance(colname, str):
+                setattr(new, colname, col)
+        delattr(new, '___')
+        new().fill(None)
+        return new
 
     def spec(self):
         spec = {}
