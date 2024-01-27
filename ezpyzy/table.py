@@ -187,13 +187,13 @@ class Table:
         return table
 
     def _set_attr(self, key, value):
-        if key is None:
-            existing_col_names = {col.name for col in self()}
-            for name in it.cycle(ez.digital_iteration("ABCDEFGHIJKLMNOPQRSTUVWXYZ")):
-                if name not in existing_col_names:
-                    key = name
-                    break
         if isinstance(value, Column) and '_columns' in vars(self):
+            if key is None:
+                existing_col_names = {col.name for col in self()}
+                for name in it.cycle(ez.digital_iteration("ABCDEFGHIJKLMNOPQRSTUVWXYZ")):
+                    if name not in existing_col_names:
+                        key = name
+                        break
             assert not self() or len(value) == len(self), \
                 f'Column {key} has {len(value)} rows, but table has {len(self())} rows'
             name, column = key, value
@@ -222,6 +222,8 @@ class Table:
                 object.__delattr__(self, alias)
 
     def __setattr__(self, key, value):
+        if isinstance(value, Column) and value._origin is not self and value._origin is not None:
+            raise ValueError(f'Cannot set column {key} to {value} because it belongs to Table {value._origin}')
         self._set_attr(key, value)
 
     def __delattr__(self, item):
@@ -324,9 +326,9 @@ class Table:
             assert all(id(col) in own_columns for col in cols), \
                 f'Attempted selecting columns not belonging to Table {self}: {cols}'
             for column in cols:
-                setattr(view, column.name, column)
+                view._set_attr(column.name, column)
                 for alias in self().aliases(column):
-                    setattr(view, alias, column)
+                    view._set_attr(alias, column)
         return view
 
     def __setitem__(self, selects, values):
@@ -1228,9 +1230,7 @@ class ColumnView(Column, T.Generic[TC]):
     def __init__(self, column, selection, name:str=None):
         self._column = column
         self.name = column.name if name is None else name
-    @property
-    def _origin(self):
-        return self._column._origin
+        self._origin = None
 
 class ListColumn(ColumnOps, list, Column, T.Generic[TC]):
     def __init__(self, items=(), name=None):
