@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import dataclasses
 import typing as T
+
+import ezpyzy
 from ezpyzy.allargs import allargs
 from ezpyzy.argcast import argcast
 from ezpyzy.autocache import autocache
@@ -30,6 +33,11 @@ ColBool = T.Union[Column[bool], bool, None]
 ColFloat = T.Union[Column[float], float, None]
 ColObj = T.Union[Column[T.Any], T.Any, None]
 ColID = T.Union[IDColumn[str], str, None]
+Def: None = lambda x: dataclasses.field(  # noqa
+    default_factory=x
+    if callable(x) and getattr(x, '__name__', None) == "<lambda>"
+    else lambda: x
+)
 from ezpyzy.timer import Timer
 
 try:

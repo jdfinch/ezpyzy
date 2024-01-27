@@ -6,6 +6,8 @@ More for machine learning dev than data exploration. If data exploration is your
 
 from __future__ import annotations
 
+import dataclasses
+
 import ezpyzy as ez
 import dataclasses as dc
 import pathlib as pl
@@ -46,7 +48,10 @@ def column_type_map(tabletype):
                 coltype = typeargs[0]
                 origin = T.get_origin(coltype)
                 typeargs = T.get_args(coltype)
-        column_types[field.name] = (coltype, typeargs[0] if typeargs else backup_element_type)
+        if Column in getattr(origin, '__mro__', ()):
+            column_types[field.name] = (
+                origin, typeargs[0] if typeargs else backup_element_type
+            )
     return column_types
 
 def column_base_type_map(column):
@@ -224,12 +229,6 @@ class Table:
             self._del_column(self._columns[item])
         else:
             object.__delattr__(self, item)
-
-    def __getattr__(self, item) -> 'Column':
-        if item in self._columns:
-            return self._columns[item]
-        else:
-            raise AttributeError(f'{self.__class__.__name__} object has no attribute {item}')
 
     def __call__(self:T1) -> 'Meta[T1]':
         return self._meta
@@ -526,7 +525,7 @@ class Table:
             c_joined.extend([a_rows[i] + b_rows[j] for i, j in pairs])
         c_joined_cols = list(zip(*c_joined))
         c_columns = [
-            column_base_type_map(old)(items=col, name=old.name)
+            Column(items=col, name=old.name)
             for old, col in zip(c_cols, c_joined_cols)
         ]
         a_map = {id(old.base()): i for i, old in enumerate(a_cols)}
@@ -559,7 +558,7 @@ class Table:
         if isinstance(other, Column):
             other = other.table()
         assert len(self()) == len(other()), \
-            f"Inner join received arguments with different number of columns: len({list(self())}) != len({list(other())})"
+            f"Left join received join key of different lengths: len({list(self())}) != len({list(other())})"
         a = self._origin or self
         b = other._origin or other
         a_cols = list(a())
@@ -591,7 +590,7 @@ class Table:
                     c_joined.append(a_rows[i] + b_rows[j])
         c_joined_cols = list(zip(*c_joined))
         c_columns = [
-            column_base_type_map(old)(items=col, name=old.name)
+            Column(items=col, name=old.name)
             for old, col in zip(c_cols, c_joined_cols)
         ]
         a_map = {id(old.base()): i for i, old in enumerate(a_cols)}
@@ -662,7 +661,7 @@ class Table:
                     c_joined.append(a_rows[i] + b_rows[j])
         c_joined_cols = list(zip(*c_joined))
         c_columns = [
-            column_base_type_map(old)(items=col, name=old.name)
+            Column(items=col, name=old.name)
             for old, col in zip(c_cols, c_joined_cols)
         ]
         a_map = {id(old.base()): i for i, old in enumerate(a_cols)}
@@ -694,7 +693,7 @@ class Table:
     def __xor__(self, other):
         raise NotImplementedError('Outer join not implemented')
 
-    def __matmul__(self, other):
+    def __matmul__(self, other):  # cartesian product
         if isinstance(other, Column):
             other = other.table()
         a_rows = list(zip(*self()))
@@ -709,7 +708,7 @@ class Table:
                 c_joined.append(a_row + b_row)
         c_joined_cols = list(zip(*c_joined))
         c_columns = [
-            column_base_type_map(old)(items=col, name=old.name)
+            Column(items=col, name=old.name)
             for old, col in zip(c_cols, c_joined_cols)
         ]
         a_map = {id(old.base()): i for i, old in enumerate(a_cols)}
@@ -880,6 +879,16 @@ class Meta(T.Generic[T2]):
             if isinstance(colname, str):
                 setattr(new, colname, col)
         delattr(new, '___')
+        new().fill(None)
+        return new
+
+    def cast(self, format:type[T4]) -> T4:
+        fields = {field.name for field in dataclasses.fields(format)}
+        new = format.of(dict(___=[None] * len(self.table)))
+        for colname, col in self.table._columns.items():
+            if isinstance(colname, str) and colname in fields:
+                setattr(new, colname, col)
+        del new.___
         new().fill(None)
         return new
 
@@ -1187,7 +1196,7 @@ class Column(ColumnOpsTypeHinting, T.Generic[TC]):
     def __call__(self, new_value=None):
         if new_value is not None:
             self[0] = new_value
-        return next(iter(self))
+        return self[0]
     def __len__(self) -> int: ...
     def __iter__(self) -> T.Iterator[TC]: ...
     def __getitem__(self, key) -> TC: ...
@@ -1257,17 +1266,17 @@ class ListColumn(ColumnOps, list, Column, T.Generic[TC]):
                     f'Boolean index must have same length as column, but got {len(selection)} != {len(self)}'
                 to_delete = {i for i, b in enumerate(selection) if b}
             else:
-                to_delete = selection
+                to_delete = set(selection)
         else:
             raise TypeError(f'Invalid index type {type(selection)} of {selection}')
         copy = list(self)
         self.clear()
         index_map = {}
-        for i in range(len(self)):
+        for i, e in enumerate(copy):
             if i in to_delete:
                 continue
             index_map[i] = len(index_map)
-            self.append(copy[i])
+            self.append(e)
         for view in self._views.values():
             viewcopy = list(view)
             view.clear()
@@ -1334,12 +1343,12 @@ class ListColumnView(ColumnOps, list, ColumnView, T.Generic[TC]):
                     f'Boolean index must have same length as column, but got {len(selection)} != {len(self)}'
                 to_delete = {i for i, b in enumerate(selection) if b}
             else:
-                to_delete = selection
+                to_delete = set(selection)
         else:
             raise TypeError(f'Invalid index type {type(selection)} of {selection}')
         assert all(-len(self) <= i < len(self) for i in to_delete), \
             f'Indices in {selection} are beyond the index bounds of of {self} (len {len(self)}) for deletion'
-        copy = list(item for i, item in enumerate(list.__iter__(self)) if i not in to_delete)
+        copy = [item for i, item in enumerate(list.__iter__(self)) if i not in to_delete]
         self.clear()
         self._extend(copy)
     def clear(self):
