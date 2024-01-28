@@ -295,20 +295,14 @@ def test_inner_join():
         ["d2", "Sam", "It's nice!"],
         ["d3", "Alex", "That's good."],
     ])
-    joined = a[[a.dialogue]] & b[[b.id]]
+    joined = a.dialogue & b[b.id]
     assert [c.name for c in joined()] == [
-        'text', 'speaker', 'dialogue', 'index',
-        'sys', 'text'
+        'text', 'speaker', 'dialogue', 'index', 'sys'
     ]
     assert list(joined.text) == [
         "Hello my name is Sam, how are you?",
         "Good.",
         "What's your deal?"
-    ]
-    assert list(joined().R.text) == [
-        "How's the weather?",
-        "How's the weather?",
-        "That's good."
     ]
     
 def test_inner_join_subrows():
@@ -323,18 +317,13 @@ def test_inner_join_subrows():
         ["d2", "Sam", "It's nice!"],
         ["d3", "Alex", "That's good."],
     ])
-    joined = a[[a.dialogue]][[0, 3]] & b[[b.id]]
+    joined = a[[a.dialogue]][[0, 3]] & b.id
     assert [c.name for c in joined()] == [
-        'text', 'speaker', 'dialogue', 'index',
-        'sys', 'text'
+        'text', 'speaker', 'dialogue', 'index', 'sys'
     ]
     assert list(joined.text) == [
         "Hello my name is Sam, how are you?",
         "What's your deal?"
-    ]
-    assert list(joined().R.text) == [
-        "How's the weather?",
-        "That's good."
     ]
     
 def test_left_join():
@@ -351,20 +340,13 @@ def test_left_join():
     ])
     joined = a.dialogue << b.id
     assert [c.name for c in joined()] == [
-        'text', 'speaker', 'dialogue', 'index',
-        'sys', 'text'
+        'text', 'speaker', 'dialogue', 'index', 'sys'
     ]
     assert list(joined.text) == [
         "Hello my name is Sam, how are you?",
         "Good.",
         "I'm okay, you?",
         "What's your deal?"
-    ]
-    assert list(joined().R.text) == [
-        "How's the weather?",
-        "How's the weather?",
-        None,
-        "That's good."
     ]
 
 def test_outer_join():
@@ -381,8 +363,7 @@ def test_outer_join():
     ])
     joined = a.dialogue | b.id
     assert [c.name for c in joined()] == [
-        'text', 'speaker', 'dialogue', 'index',
-        'sys', 'text'
+        'text', 'speaker', 'dialogue', 'index', 'sys'
     ]
     assert list(joined.text) == [
         "Hello my name is Sam, how are you?",
@@ -390,13 +371,6 @@ def test_outer_join():
         None,
         "What's your deal?",
         "I'm okay, you?"
-    ]
-    assert list(joined().R.text) == [
-        "How's the weather?",
-        "How's the weather?",
-        "It's nice!",
-        "That's good.",
-        None
     ]
 
 def test_cartesian_join():
@@ -413,7 +387,7 @@ def test_cartesian_join():
     ])
     joined = a[a.text, a.speaker] @ b[b.text]
     assert [c.name for c in joined()] == [
-        'text', 'speaker', 'text'
+        'text', 'speaker',
     ]
     assert list(joined.text) == [
         "Hello my name is Sam, how are you?",
@@ -429,22 +403,6 @@ def test_cartesian_join():
         "What's your deal?",
         "What's your deal?"
     ]
-    assert list(joined().R.text) == [
-        "How's the weather?",
-        "It's nice!",
-        "That's good.",
-        "How's the weather?",
-        "It's nice!",
-        "That's good.",
-        "How's the weather?",
-        "It's nice!",
-        "That's good.",
-        "How's the weather?",
-        "It's nice!",
-        "That's good."
-    ]
-
-
     
 def test_column_to_table():
     c = ez.Column([
@@ -636,3 +594,26 @@ def test_create_table_from_rows_anonymous_columns():
     assert list(table.A) == [1, 4]
     assert list(table.B) == [2, 5]
     assert list(table.C) == [3, 6]
+
+def test_sequential_joins():
+    turns = Turn.of([
+        ["Hello my name is Sam, how are you?", "Sam", "d1", 0, 'a'],
+        ["What's your deal?", "Alex", "d3", 3, 'b'],
+        ["Something weather", "Alex", "d3", 5, 'c']
+    ])
+    dialogues = Dialogue.of([
+        ["d1", "Sam", "How's the weather?"],
+        ["d2", "Sam", "It's nice!"],
+        ["d3", "Alex", "That's good."]
+    ])
+    extra_info = Turn.of(dict(
+        idx=[0, 5, 5],
+        foo=['foo', 'bar', 'baz']
+    ))
+    join_1 = dialogues.id << turns.dialogue
+    join_2 = join_1.index << extra_info.idx
+    assert list(join_2().column_names) == [
+        'id', 'sys', 'text', 'speaker', 'index', 'foo'
+    ]
+    assert list(join_2.id) == ['d1', 'd2', 'd3', 'd3', 'd3']
+    assert list(join_2.foo) == ['foo', None, None, 'bar', 'baz']

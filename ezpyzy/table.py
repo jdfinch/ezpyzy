@@ -127,9 +127,9 @@ class Table:
                 for var, val in list(vars(table).items()):
                     if isinstance(val, Column):
                         table._del_column(val)
-                for column in data():
+                for column in data(): # noqa
                     col = column_base_type_map(column)(items=column, name=column.name)
-                    for alias in data().aliases(column):
+                    for alias in data().aliases(column): # noqa
                         table._set_attr(alias, col)
             elif isinstance(data, dict):
                 for var, val in list(vars(table).items()):
@@ -220,6 +220,9 @@ class Table:
                 del self._columns[(alias,)]
             if vars(self).get(alias) is column:
                 object.__delattr__(self, alias)
+
+    def __getattr__(self, item):
+        return object.__getattribute__(self, item)
 
     def __setattr__(self, key, value):
         if isinstance(value, Column) and value._origin is not self and value._origin is not None:
@@ -316,6 +319,7 @@ class Table:
             raise TypeError(f'Invalid index type {type(selects)} of {selects}')
         if rows is not None:
             for column in self():
+                column._origin = self
                 column_view = ColumnView(column, rows)
                 setattr(view, column.name, column_view)
                 for alias in self().aliases(column):
@@ -491,12 +495,9 @@ class Table:
             other = Table.of(other)
         assert len(self) == len(other), \
             f'Column concatenation requires equal number of rows, but got row lengths {len(self)} != {len(other)}'
-        self._right_joined = other
         for name, column in other._columns.items():
             if name not in self._columns:
-                self._set_attr(name, column)
-            elif isinstance(name, str):
-                self._set_attr((name,), column)
+                self._set_attr(name, Column(column, name=name))
         return self
 
     def __and__(self: T1, other) -> T1: # inner join
@@ -548,12 +549,11 @@ class Table:
             if id(c.base()) in b_map
         }
         result = type(a).of({})
-        right = type(b).of({})
         for name, column in a_new.items():
             result._set_attr(name, column)
         for name, column in b_new.items():
-            right._set_attr(name, column)
-        result -= right
+            if name not in result._columns:
+                result._set_attr(name, column)
         return result
 
     def __lshift__(self, other): # left join
@@ -613,12 +613,11 @@ class Table:
             if id(c.base()) in b_map
         }
         result = type(a).of({})
-        right = type(b).of({})
         for name, column in a_new.items():
             result._set_attr(name, column)
         for name, column in b_new.items():
-            right._set_attr(name, column)
-        result -= right
+            if name not in result._columns:
+                result._set_attr(name, column)
         return result
 
     def __or__(self, other): # full join
@@ -684,16 +683,12 @@ class Table:
             if id(c.base()) in b_map
         }
         result = type(a).of({})
-        right = type(b).of({})
         for name, column in a_new.items():
             result._set_attr(name, column)
         for name, column in b_new.items():
-            right._set_attr(name, column)
-        result -= right
+            if name not in result._columns:
+                result._set_attr(name, column)
         return result
-
-    def __xor__(self, other):
-        raise NotImplementedError('Outer join not implemented')
 
     def __matmul__(self, other):  # cartesian product
         if isinstance(other, Column):
@@ -726,12 +721,11 @@ class Table:
             if id(c.base()) in b_map
         }
         result = type(self).of({})
-        right = type(other).of({})
         for name, column in a_new.items():
             result._set_attr(name, column)
         for name, column in b_new.items():
-            right._set_attr(name, column)
-        result -= right
+            if name not in result._columns:
+                result._set_attr(name, column)
         return result
 
     def __rshift__(self, other): # right join
@@ -743,9 +737,6 @@ class Table:
         raise NotImplementedError('In-place Inner Join not implemented yet')
 
     def __ior__(self: T1, other) -> T1: # outer join
-        raise NotImplementedError('In-place Outer Join not implemented yet')
-
-    def __ixor__(self: T1, other) -> T1: # outer join
         raise NotImplementedError('In-place Outer Join not implemented yet')
 
 
@@ -876,23 +867,18 @@ class Meta(T.Generic[T2]):
         return self
 
     def extend(self, format:type[T4]) -> T4:
-        new = format.of(dict(___=[None]*len(self.table)))
-        for colname, col in self.table._columns.items():
-            if isinstance(colname, str):
-                setattr(new, colname, col)
-        delattr(new, '___')
-        new().fill(None)
-        return new
+        self.table.__class__ = format
+        self.fill(None)
+        return self.table
 
     def cast(self, format:type[T4]) -> T4:
-        fields = {field.name for field in dataclasses.fields(format)}
-        new = format.of(dict(___=[None] * len(self.table)))
-        for colname, col in self.table._columns.items():
-            if isinstance(colname, str) and colname in fields:
-                setattr(new, colname, col)
-        del new.___
-        new().fill(None)
-        return new
+        self.table.__class__ = format
+        fields = {f.name for f in dataclasses.fields(format)}
+        for name, attr in list(vars(self.table).items()):
+            if isinstance(attr, Column) and name not in fields:
+                delattr(self.table, name)
+        self.fill(None)
+        return self.table
 
     def spec(self):
         spec = {}
@@ -1218,12 +1204,12 @@ class Column(ColumnOpsTypeHinting, T.Generic[TC]):
 
 class ColumnView(Column, T.Generic[TC]):
     def __new__(_cls, _column, *args, **kwargs):
-        if isinstance(_column, list):
+        if isinstance(_column, DictColumn):
+            _cls = DictColumnView
+            _obj = list.__new__(_cls)
+        elif isinstance(_column, list):
             _cls = ListColumnView
             _obj = list.__new__(_cls)
-        elif isinstance(_column, dict):
-            _cls = DictColumnView
-            _obj = dict.__new__(_cls)
         else:
             raise TypeError(f'Invalid column type {type(_column)}')
         return _obj
@@ -1272,11 +1258,10 @@ class ListColumn(ColumnOps, list, Column, T.Generic[TC]):
         copy = list(self)
         self.clear()
         index_map = {}
-        for i, e in enumerate(copy):
-            if i in to_delete:
-                continue
+        redone_elements = [e for i, e in enumerate(copy) if i not in to_delete]
+        for i, e in [(i, e) for i, e in enumerate(copy) if i not in to_delete]:
             index_map[i] = len(index_map)
-            self.append(e)
+        self._extend(redone_elements)
         for view in self._views.values():
             viewcopy = list(view)
             view.clear()
@@ -1392,6 +1377,8 @@ class DictColumn(ListColumn[TC]):
             f'Cannot extend ID column with duplicate values in: {set(values)}'
         self._ids.update({value: i for i, value in enumerate(values)})
         ListColumn._extend(self, values)
+    def append(self, value):
+        raise AssertionError("Appending to IDColumn is not allowed!")
     def __setitem__(self, selection, values):
         if isinstance(values, Table):
             return
