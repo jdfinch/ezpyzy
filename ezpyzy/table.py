@@ -739,6 +739,12 @@ class Table:
     def __ior__(self: T1, other) -> T1: # outer join
         raise NotImplementedError('In-place Outer Join not implemented yet')
 
+    def __ilshift__(self, other): # left join
+        raise NotImplementedError('In-place Left Join not implemented yet')
+
+    def __irshift__(self, other): # right join
+        raise NotImplementedError('In-place Right Join not implemented yet')
+
 
 
 T2 = T.TypeVar('T2', bound=Table)
@@ -1217,6 +1223,10 @@ class ColumnView(Column, T.Generic[TC]):
         self._column = column
         self.name = column.name if name is None else name
         self._origin = None
+    def __str__(self):
+        return f"[{', '.join(self)}]"
+    def __repr__(self):
+        return f"[{', '.join(repr(e) for e in self)}]"
 
 class ListColumn(ColumnOps, list, Column, T.Generic[TC]):
     def __init__(self, items=(), name=None):
@@ -1355,6 +1365,10 @@ class ListColumnView(ColumnOps, list, ColumnView, T.Generic[TC]):
         raise TypeError(f'Column of type {type(self)} does not support extend: {self}')
     def _extend(self, indices):
         list.extend(self, indices)
+    def __str__(self):
+        return f"[{', '.join(self)}]"
+    def __repr__(self):
+        return f"[{', '.join(repr(e) for e in self)}]"
 
 
 class DictColumn(ListColumn[TC]):
@@ -1437,6 +1451,10 @@ class DictColumnView(ListColumnView[TC], DictColumn):
         old_len = len(self)
         self._ids.update({self._column[index]: i for i, index in enumerate(indices, old_len)})
         list.extend(self, indices)
+    def __str__(self):
+        return f"[{', '.join(self)}]"
+    def __repr__(self):
+        return f"[{', '.join(repr(e) for e in self)}]"
 
 
 IDColumn = Column
