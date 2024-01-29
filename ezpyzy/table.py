@@ -7,6 +7,7 @@ More for machine learning dev than data exploration. If data exploration is your
 from __future__ import annotations
 
 import dataclasses
+import json
 
 import ezpyzy as ez
 import dataclasses as dc
@@ -113,16 +114,17 @@ class Table:
             table = cls()
             column_types = column_type_map(table)
             if isinstance(data, (str, pl.Path, io.IOBase, ez.File)):
-                csv_data = ez.File(data).load()
+                if isinstance(data, str) and not pl.Path(data).exists():
+                    try:
+                        csv_data = ez.CSV.deserialize(data)
+                    except Exception:
+                        csv_data = ez.File(data).load()
+                else:
+                    csv_data = ez.File(data).load()
                 data = {col[0]: col[1:] for col in zip(*csv_data)}
                 for col_name, col_vals in list(data.items()):
                     col_elements_type = column_types.get(col_name, (None, str))[1]
-                    if col_elements_type is not str:
-                        data[col_name] = [
-                            col_elements_type(val)
-                            if val else None
-                            for val in col_vals
-                        ]
+                    data[col_name] = [json.loads(val) for val in col_vals]
             if isinstance(data, Table):
                 for var, val in list(vars(table).items()):
                     if isinstance(val, Column):
@@ -760,10 +762,16 @@ class Meta(T.Generic[T2]):
     def path(self, path:ez.filelike):
         self.table._path = ez.File(path).path
     def save(self, path:ez.filelike=None):
-        file = ez.File(path or self.table._path, format='csv')
-        columns = [[col.name]+list(col) for col in self.columns]
+        col_types = {k: v[1] for k, v in column_type_map(type(self.table)).items()}
+        columns = [[col.name] + [
+            json.dumps(val) for val in col
+        ] for col in self.columns]
         rows = zip(*columns)
-        return file.save(rows)
+        if path is None:
+            return ez.CSV.serialize(rows)
+        else:
+            file = ez.File(path or self.table._path, format='csv')
+            return file.save(rows)
     @property
     def origin(self):
         return self.table._origin
