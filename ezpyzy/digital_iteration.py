@@ -2,8 +2,10 @@
 import itertools as it
 
 
-def digital_iteration(chars):
+def digital_iteration(n=None, chars='ABCDEFGHIJKLMNOPQRSTUVWXYZ'):
     for i in it.count():
+        if n is not None and i == n:
+            return
         name = ''
         index = i
         while index >= 0:

@@ -13,19 +13,25 @@ class Timer:
     start: float = None
     end: float|None = None
 
-    def __init__(self):
-        self.start = time.perf_counter()
+    def __init__(self, message=None, show=True):
+        self.message = message
+        self.show = show
         self.end = None
         self.display = None
         self.delta = None
+        self.start = time.perf_counter()
 
     def __enter__(self):
+        if self.show:
+            print(self.message, end='... ')
         return self
 
     def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
         self.end = time.perf_counter()
         self.delta = self.end - self.start
         self.display = format_time(self.delta)
+        if self.show:
+            print(self.display)
     stop=__exit__
 
 

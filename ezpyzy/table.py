@@ -71,8 +71,8 @@ class Table:
         self._meta:Meta = Meta(self)
         self._name: str = self.__class__.__name__
         self._id: str | None = None
+        self._view_index: list[int]|None = None
         self._origin:Table|None = None
-        self._view_index: list[int]|None = None # not used except for convenience by user
         self._right_joined: Table|None = None
         self._columns: dict[str|tuple[[str]], Column] = {}
         self._path:pl.Path|None = None
@@ -192,7 +192,7 @@ class Table:
         if isinstance(value, Column) and '_columns' in vars(self):
             if key is None:
                 existing_col_names = {col.name for col in self()}
-                for name in it.cycle(ez.digital_iteration("ABCDEFGHIJKLMNOPQRSTUVWXYZ")):
+                for name in it.cycle(ez.digital_iteration(chars="ABCDEFGHIJKLMNOPQRSTUVWXYZ")):
                     if name not in existing_col_names:
                         key = name
                         break
@@ -324,9 +324,9 @@ class Table:
                 column._origin = self
                 column_view = ColumnView(column, rows)
                 setattr(view, column.name, column_view)
+                view._view_index = list(rows)
                 for alias in self().aliases(column):
                     setattr(view, alias, column_view)
-                view._view_index = list(rows)
         elif cols is not None:
             own_columns = {id(column) for column in self()}
             assert all(id(col) in own_columns for col in cols), \
@@ -782,11 +782,6 @@ class Meta(T.Generic[T2]):
     def is_view(self):
         return self.table._origin is not None
     @property
-    def index(self):
-        if self.table._view_index is None:
-            return list(range(len(self.table)))
-        return self.table._view_index
-    @property
     def name(self):
         return self.table._name
     @name.setter
@@ -810,6 +805,11 @@ class Meta(T.Generic[T2]):
     @id.setter
     def id(self, id):
         self.table._id = id
+    @property
+    def index(self):
+        if self.table._view_index is None:
+            return list(range(len(self.table)))
+        return self.table._view_index
     @property
     def L(self):
         return self.table
@@ -950,19 +950,15 @@ class Meta(T.Generic[T2]):
                 raise NotImplementedError('Sort not implemented for non-list columns')
         return self.table
 
-    @property
-    def groups(self):
-        return {None: self}
-
     default = object()
 
-    def group(self: T1, key=None) -> T.Dict[T.Any, T1]:
+    def group(self, key=None) -> T.Dict[T.Any, T2]:
         if key is None:
-            key = self.table
+            key = list(self.items())
         if isinstance(key, Column):
             key = list(key)
         elif isinstance(key, Table):
-            key = list(zip(*key()))
+            key = list(key().items()) # noqa
         if callable(key) and not isinstance(key, (Column, Table)):
             sig = ins.signature(key)
             if all(param in self.table._columns for param in sig.parameters):
@@ -970,9 +966,9 @@ class Meta(T.Generic[T2]):
                 key = [key(*args) for args in zip(*columnwise)] # noqa
             else:
                 key = [key(row) for row in self.table] # noqa
-        group_indices = {}
+        group_indices = {k: [] for k in key}
         for i, group in enumerate(key):
-            group_indices.setdefault(group, []).append(i)
+            group_indices[group].append(i)
         groups = {key: self.table[indices] for key, indices in group_indices.items()}
         return groups
 
@@ -1314,25 +1310,30 @@ class ListColumnView(ColumnOps, list, ColumnView, T.Generic[TC]):
         ColumnView.__init__(self, column, indices, name=name)
         self._column._views[id(self)] = self
     def __getitem__(self, selection):
-        values = [self._column[i] for i in list.__iter__(self)]
         try:
-            return list.__getitem__(values, selection)
+            return self._column[list.__getitem__(self, selection)]
         except TypeError:
             if not isinstance(selection, list):
-                raise TypeError(f'Invalid index type {type(selection)} of {selection}')
+                raise TypeError(f'Invalid index type {type(selection)}')
             if not selection:
                 return []
             first = selection[0]
             if isinstance(first, bool):
-                assert len(selection) == len(values), \
-                    f'Boolean index must have same length as column, but got {len(selection)} != {len(values)}'
-                return [list.__getitem__(values, i) for i, b in enumerate(selection) if b]
+                assert len(selection) == len(self), \
+                    f'Boolean index must have same length as column, but got {len(selection)} != {len(self)}'
+                indices = [i for i, b in zip(list.__iter__(self), selection) if b]
+                return self._column[indices]
             elif isinstance(first, int):
-                return [list.__getitem__(values, i) for i in selection]
+                indices = [list.__getitem__(self, i) for i in selection]
+                return self._column[indices]
             else:
                 raise TypeError(f'Invalid index type {type(first)} of {first}')
     def __iter__(self):
-        yield from (self._column[i] for i in list.__iter__(self))
+        if isinstance(self._column, ColumnView):
+            indices = list(list.__iter__(self))
+            return iter(self._column[indices])
+        else:
+            return iter([list.__getitem__(self._column, i) for i in list.__iter__(self)])
     def __delitem__(self, selection):
         if isinstance(selection, int):
             to_delete = {selection}
