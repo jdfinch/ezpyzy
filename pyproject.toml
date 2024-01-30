@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ezpyzy"
-version = "0.1.1"
+version = "0.2.0"
 description = "Utility functions solving common but annoying problems."
 authors = ["jdfinch <jdfinch@emory.edu>"]
 readme = "README.md"
