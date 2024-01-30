@@ -580,8 +580,8 @@ def test_save_and_load():
         ["What's your deal?", "Alex", "d3", 3, 'b'],
         ["Something weather", "Alex", "d3", 5, 'c']
     ])
-    turns().save('test/foo/testfile.csv')
-    loaded = Turn.of('test/foo/testfile.csv')
+    turns().save('test_ezpyzy/test/foo/testfile.csv')
+    loaded = Turn.of('test_ezpyzy/test/foo/testfile.csv')
     assert list(loaded.text) == [
         "Hello my name is Sam, how are you?",
         "What's your deal?",
