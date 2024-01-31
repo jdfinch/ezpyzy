@@ -319,11 +319,10 @@ def test_inner_join_subrows():
     ])
     joined = a[[a.dialogue]][[0, 3]] & b.id
     assert [c.name for c in joined()] == [
-        'text', 'speaker', 'dialogue', 'index', 'sys'
+        'dialogue', 'sys', 'text'
     ]
     assert list(joined.text) == [
-        "Hello my name is Sam, how are you?",
-        "What's your deal?"
+        "How's the weather?", "That's good."
     ]
     
 def test_left_join():
@@ -344,8 +343,8 @@ def test_left_join():
     ]
     assert list(joined.text) == [
         "Hello my name is Sam, how are you?",
-        "Good.",
         "I'm okay, you?",
+        "Good.",
         "What's your deal?"
     ]
 
@@ -367,10 +366,10 @@ def test_outer_join():
     ]
     assert list(joined.text) == [
         "Hello my name is Sam, how are you?",
+        "I'm okay, you?",
         "Good.",
-        None,
         "What's your deal?",
-        "I'm okay, you?"
+        None
     ]
 
 def test_cartesian_join():
@@ -386,8 +385,10 @@ def test_cartesian_join():
         ["d3", "Alex", "That's good."],
     ])
     joined = a[a.text, a.speaker] @ b[b.text]
+    assert len(joined) == 0
+    joined = a[a.text, a.speaker] @ b[b.sys]
     assert [c.name for c in joined()] == [
-        'text', 'speaker',
+        'text', 'speaker', 'sys'
     ]
     assert list(joined.text) == [
         "Hello my name is Sam, how are you?",

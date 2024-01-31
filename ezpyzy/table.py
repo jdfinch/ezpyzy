@@ -320,8 +320,8 @@ class Table:
         else:
             raise TypeError(f'Invalid index type {type(selects)} of {selects}')
         if rows is not None:
+            view._origin = view
             for column in self():
-                column._origin = self
                 column_view = ColumnView(column, rows)
                 setattr(view, column.name, column_view)
                 view._view_index = list(rows)
@@ -506,56 +506,29 @@ class Table:
         if isinstance(other, Column):
             other = other.table()
         assert len(self()) == len(other()), \
-            f"Inner join received arguments with different number of columns: len({list(self())}) != len({list(other())})"
-        a = self._origin or self
-        b = other._origin or other
-        a_cols = list(a())
-        a_rows = list(zip(*a()))
-        left = {}
-        for index, *on in zip(self().index, *self()):
-            left.setdefault(tuple(on), []).append(index)
-        b_cols = [col for col in b() if not any(col.base() is c.base() for c in other())]
-        b_rows = list(zip(*b_cols))
-        c_split = len(a_cols)
-        c_cols = a_cols + b_cols
-        c_joined = []
-        c_join = {on: [] for i, on in enumerate(left)}
-        if b_rows:
-            for j, *on in zip(other().index, *other()):
-                on = tuple(on)
-                if on in left:
-                    for i in left[on]:
-                        c_join[on].append((i, j))
-        for on, pairs in c_join.items():
-            c_joined.extend([a_rows[i] + b_rows[j] for i, j in pairs])
-        c_joined_cols = list(zip(*c_joined))
-        c_columns = [
-            Column(items=col, name=old.name)
-            for old, col in zip(c_cols, c_joined_cols)
+            f"Left join received join key of different lengths: len({list(self())}) != len({list(other())})"
+        ltable = self._origin or self
+        rtable = other._origin or other
+        cut_right_cols = set(ltable().column_names) | set(other().column_names)
+        lkeys = self().items()
+        rkeys = other().items()
+        ldata = ltable().items()
+        rcols = [col for col in rtable() if col.name not in cut_right_cols]
+        rdata = zip(*rcols)
+        rmap = {}
+        for rkey, rrow in zip(rkeys, rdata):
+            if rkey not in rmap:
+                rmap[rkey] = []
+            rmap[rkey].append(rrow)
+        rempty = []
+        result_col_names = [col.name for col in ltable()] + [col.name for col in rcols]
+        result_rows = [
+            lrow + rrow for lkey, lrow in zip(lkeys, ldata) for rrow in rmap.get(lkey, rempty)
         ]
-        a_map = {id(old.base()): i for i, old in enumerate(a_cols)}
-        b_map = {id(old.base()): c_split + i for i, old in enumerate(b_cols)}
-        a_col_ids = {id(c.base()) for c in a()}
-        b_col_ids = {id(c.base()) for c in b()}
-        for a_on, b_on in zip(self(), other()):
-            if id(b_on.base()) in b_col_ids and id(a_on.base()) in a_col_ids:
-                b_map[id(b_on.base())] = a_map[id(a_on.base())]
-        a_new = {
-            name: c_columns[a_map[id(c.base())]]
-            for name, c in a._columns.items()
-            if id(c.base()) in a_map
-        }
-        b_new = {
-            name: c_columns[b_map[id(c.base())]]
-            for name, c in b._columns.items()
-            if id(c.base()) in b_map
-        }
-        result = type(a).of({})
-        for name, column in a_new.items():
-            result._set_attr(name, column)
-        for name, column in b_new.items():
-            if name not in result._columns:
-                result._set_attr(name, column)
+        result_cols = zip(*result_rows)
+        result = type(ltable).of({})
+        for col_name, col in zip(result_col_names, result_cols):
+            result._set_attr(col_name, Column(col))
         return result
 
     def __lshift__(self, other): # left join
@@ -563,171 +536,80 @@ class Table:
             other = other.table()
         assert len(self()) == len(other()), \
             f"Left join received join key of different lengths: len({list(self())}) != len({list(other())})"
-        a = self._origin or self
-        b = other._origin or other
-        a_cols = list(a())
-        a_rows = list(zip(*a()))
-        left = {}
-        for index, *on in zip(self().index, *self()):
-            left.setdefault(tuple(on), []).append(index)
-        b_cols = [
-            col for col in b() if not any(col.base() is c.base() for c in other())
+        ltable = self._origin or self
+        rtable = other._origin or other
+        cut_right_cols = set(ltable().column_names) | set(other().column_names)
+        lkeys = self().items()
+        rkeys = other().items()
+        ldata = ltable().items()
+        rcols = [col for col in rtable() if col.name not in cut_right_cols]
+        rdata = zip(*rcols)
+        rmap = {}
+        for rkey, rrow in zip(rkeys, rdata):
+            if rkey not in rmap:
+                rmap[rkey] = []
+            rmap[rkey].append(rrow)
+        rempty = [(None,) * len(rcols)]
+        result_col_names = [col.name for col in ltable()] + [col.name for col in rcols]
+        result_rows = [
+            lrow + rrow for lkey, lrow in zip(lkeys, ldata) for rrow in rmap.get(lkey, rempty)
         ]
-        b_rows = list(zip(*b_cols))
-        c_split = len(a_cols)
-        c_cols = a_cols + b_cols
-        c_joined = []
-        c_join = {on: [(i, None)] for i, on in enumerate(left)}
-        if b_rows:
-            for j, *on in zip(other().index, *other()):
-                on = tuple(on)
-                if on in left:
-                    for i in left[on]:
-                        c_join[on].append((i, j))
-        for on, pairs in c_join.items():
-            if len(pairs) > 1:
-                pairs = pairs[1:]
-            for i, j in pairs:
-                if j is None:
-                    c_joined.append(a_rows[i] + (None,) * len(b_cols)) # noqa
-                else:
-                    c_joined.append(a_rows[i] + b_rows[j])
-        c_joined_cols = list(zip(*c_joined))
-        c_columns = [
-            Column(items=col, name=old.name)
-            for old, col in zip(c_cols, c_joined_cols)
-        ]
-        a_map = {id(old.base()): i for i, old in enumerate(a_cols)}
-        b_map = {id(old.base()): c_split + i for i, old in enumerate(b_cols)}
-        a_col_ids = {id(c.base()) for c in a()}
-        b_col_ids = {id(c.base()) for c in b()}
-        for a_on, b_on in zip(self(), other()):
-            if id(b_on.base()) in b_col_ids and id(a_on.base()) in a_col_ids:
-                b_map[id(b_on.base())] = a_map[id(a_on.base())]
-        a_new = {
-            name: c_columns[a_map[id(c.base())]]
-            for name, c in a._columns.items()
-            if id(c.base()) in a_map
-        }
-        b_new = {
-            name: c_columns[b_map[id(c.base())]]
-            for name, c in b._columns.items()
-            if id(c.base()) in b_map
-        }
-        result = type(a).of({})
-        for name, column in a_new.items():
-            result._set_attr(name, column)
-        for name, column in b_new.items():
-            if name not in result._columns:
-                result._set_attr(name, column)
+        result_cols = zip(*result_rows)
+        result = type(ltable).of({})
+        for col_name, col in zip(result_col_names, result_cols):
+            result._set_attr(col_name, Column(col))
         return result
 
     def __or__(self, other): # full join
         if isinstance(other, Column):
             other = other.table()
         assert len(self()) == len(other()), \
-            f"Full join received arguments with different number of columns: len({list(self())}) != len({list(other())})"
-        a = self._origin or self
-        b = other._origin or other
-        a_cols = list(a())
-        a_rows = list(zip(*a()))
-        left = {}
-        for index, *on in zip(self().index, *self()):
-            left.setdefault(tuple(on), []).append(index)
-        right = {}
-        for index, *on in zip(other().index, *other()):
-            right.setdefault(tuple(on), []).append(index)
-        b_cols = [
-            col for col in b() if not any(col.base() is c.base() for c in other())
+            f"Left join received join key of different lengths: len({list(self())}) != len({list(other())})"
+        ltable = self._origin or self
+        rtable = other._origin or other
+        cut_right_cols = set(ltable().column_names) | set(other().column_names)
+        lkeys = list(self().items())
+        rkeys = other().items()
+        ldata = ltable().items()
+        rcols = [col for col in rtable() if col.name not in cut_right_cols]
+        rdata = zip(*rcols)
+        rmap = {}
+        for rkey, rrow in zip(rkeys, rdata):
+            if rkey not in rmap:
+                rmap[rkey] = []
+            rmap[rkey].append(rrow)
+        lempty = [None] * len(ltable())
+        rempty = [(None,) * len(rcols)]
+        result_col_names = [col.name for col in ltable()] + [col.name for col in rcols]
+        lkeyset = set(lkeys)
+        result_rows = [
+            lrow + rrow for lkey, lrow in zip(lkeys, ldata) for rrow in rmap.get(lkey, rempty)
+        ] + [
+            lempty + rrow for rrow in [rrow for rkey, rrow in rmap.items() if rkey not in lkeyset]
         ]
-        b_rows = list(zip(*b_cols))
-        c_split = len(a_cols)
-        c_cols = a_cols + b_cols
-        c_joined = []
-        c_join = {on: [(None, j)] for j, on in enumerate(right)}
-        c_join.update({on: [(i, None)] for i, on in enumerate(left)})
-        if b_rows:
-            for j, *on in zip(other().index, *other()):
-                on = tuple(on)
-                if on in left:
-                    for i in left[on]:
-                        c_join[on].append((i, j))
-        for on, pairs in c_join.items():
-            if len(pairs) > 1:
-                pairs = pairs[1:]
-            for i, j in pairs:
-                if j is None:
-                    c_joined.append(a_rows[i] + (None,) * len(b_cols))  # noqa
-                elif i is None:
-                    c_joined.append((None,) * len(a_cols) + b_rows[j])  # noqa
-                else:
-                    c_joined.append(a_rows[i] + b_rows[j])
-        c_joined_cols = list(zip(*c_joined))
-        c_columns = [
-            Column(items=col, name=old.name)
-            for old, col in zip(c_cols, c_joined_cols)
-        ]
-        a_map = {id(old.base()): i for i, old in enumerate(a_cols)}
-        b_map = {id(old.base()): c_split + i for i, old in enumerate(b_cols)}
-        a_col_ids = {id(c.base()) for c in a()}
-        b_col_ids = {id(c.base()) for c in b()}
-        for a_on, b_on in zip(self(), other()):
-            if id(b_on.base()) in b_col_ids and id(a_on.base()) in a_col_ids:
-                b_map[id(b_on.base())] = a_map[id(a_on.base())]
-        a_new = {
-            name: c_columns[a_map[id(c.base())]]
-            for name, c in a._columns.items()
-            if id(c.base()) in a_map
-        }
-        b_new = {
-            name: c_columns[b_map[id(c.base())]]
-            for name, c in b._columns.items()
-            if id(c.base()) in b_map
-        }
-        result = type(a).of({})
-        for name, column in a_new.items():
-            result._set_attr(name, column)
-        for name, column in b_new.items():
-            if name not in result._columns:
-                result._set_attr(name, column)
+        result_cols = zip(*result_rows)
+        result = type(ltable).of({})
+        for col_name, col in zip(result_col_names, result_cols):
+            result._set_attr(col_name, Column(col))
         return result
 
     def __matmul__(self, other):  # cartesian product
         if isinstance(other, Column):
             other = other.table()
-        a_rows = list(zip(*self()))
-        a_cols = list(self())
-        b_rows = list(zip(*other()))
-        b_cols = list(other())
-        c_cols = a_cols + b_cols
-        c_split = len(a_cols)
-        c_joined = []
-        for a_row in a_rows:
-            for b_row in b_rows:
-                c_joined.append(a_row + b_row)
-        c_joined_cols = list(zip(*c_joined))
-        c_columns = [
-            Column(items=col, name=old.name)
-            for old, col in zip(c_cols, c_joined_cols)
+        ltable = self
+        rtable = other
+        cut_right_cols = set(ltable().column_names)
+        ldata = ltable().items()
+        rcols = [col for col in rtable() if col.name not in cut_right_cols]
+        rdata = list(zip(*rcols))
+        result_col_names = [col.name for col in ltable()] + [col.name for col in rcols]
+        result_rows = [
+            lrow + rrow for lrow in ldata for rrow in rdata
         ]
-        a_map = {id(old.base()): i for i, old in enumerate(a_cols)}
-        b_map = {id(old.base()): c_split + i for i, old in enumerate(b_cols)}
-        a_new = {
-            name: c_columns[a_map[id(c.base())]]
-            for name, c in self._columns.items()
-            if id(c.base()) in a_map
-        }
-        b_new = {
-            name: c_columns[b_map[id(c.base())]]
-            for name, c in other._columns.items()
-            if id(c.base()) in b_map
-        }
-        result = type(self).of({})
-        for name, column in a_new.items():
-            result._set_attr(name, column)
-        for name, column in b_new.items():
-            if name not in result._columns:
-                result._set_attr(name, column)
+        result_cols = zip(*result_rows)
+        result = type(ltable).of({})
+        for col_name, col in zip(result_col_names, result_cols):
+            result._set_attr(col_name, Column(col))
         return result
 
     def __rshift__(self, other): # right join
@@ -1277,9 +1159,9 @@ class ListColumn(ColumnOps, list, Column, T.Generic[TC]):
             index_map[i] = len(index_map)
         self._extend(redone_elements)
         for view in self._views.values():
-            viewcopy = list(view)
+            viewcopy = list(list.__iter__(view))
             view.clear()
-            view._extend(index_map[index] for index in viewcopy if index in index_map)
+            view._extend([index_map[index] for index in viewcopy if index in index_map])
     def __setitem__(self, selection, values):
         if isinstance(values, Table):
             return
