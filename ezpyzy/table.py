@@ -148,7 +148,7 @@ class Table:
                 if isinstance(first_row, Table):
                     data = [row().dict() for row in data]
                     first_row = next(iter(data))
-                if isinstance(first_row, list):
+                if isinstance(first_row, (list, tuple)):
                     table_cols = list(table()) + [Column() for _ in range(len(first_row) - len(table()))]
                     for name in table().column_names:
                         delattr(table, name)
@@ -330,7 +330,7 @@ class Table:
         elif cols is not None:
             own_columns = {id(column) for column in self()}
             assert all(id(col) in own_columns for col in cols), \
-                f'Attempted selecting columns not belonging to Table {self}: {cols}'
+                f'Attempted selecting columns not belonging to Table {self}: {[c.name for c in cols]}'
             for column in cols:
                 view._set_attr(column.name, column)
                 for alias in self().aliases(column):
