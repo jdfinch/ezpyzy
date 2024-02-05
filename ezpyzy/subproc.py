@@ -27,8 +27,9 @@ def subproc(fn_or_module, *args, **kwargs):
                f"{module_name}.{fn_name}(*args, **kwargs)"
     else:
         code = f"import {module_name}"
-    p = sp.Popen(['python', '-c', code], stdin=sp.PIPE)
+    p = sp.Popen(['python', '-c', code], stdin=sp.PIPE, universal_newlines=False)
     p.communicate(arguments)
+    p.stdin.close()
     p.wait()
     return p.returncode
 
