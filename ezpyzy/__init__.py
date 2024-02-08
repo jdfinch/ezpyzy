@@ -24,6 +24,7 @@ from ezpyzy.send_email import send_email as email
 from ezpyzy.short_uuid import short_uuid as uuid
 from ezpyzy.shush import shush
 from ezpyzy.singleton import Singleton, SingletonMeta
+from ezpyzy.split import split
 from ezpyzy.subproc import subproc
 from ezpyzy.table import Table, Column, IDColumn
 ColStr = T.Union[Column[str], str, None]
