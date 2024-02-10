@@ -345,6 +345,8 @@ def to_path(path: filelike) -> pl.Path:
     if isinstance(path, pl.Path):
         return path
     elif isinstance(path, str):
+        if path.startswith('~'):
+            return pl.Path(path).expanduser()
         return pl.Path(path)
     elif isinstance(path, io.IOBase):
         if hasattr(path, 'name'):

@@ -6,10 +6,11 @@ import smtplib
 import json
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
 import os
 
 
-def send_email(recipient, subject, message):
+def send_email(recipient, subject, message, **images):
     """
     Send an email to the specified recipient with the specified subject and message. Create the file:
 
@@ -46,6 +47,16 @@ def send_email(recipient, subject, message):
 
     # Attach the message to the email
     msg.attach(MIMEText(message, 'plain'))
+
+    # If image_path is provided, attach the image to the email
+    for name, image in images.items():
+        if image is None:
+            continue
+        if isinstance(image, str):
+            with open(image, 'rb') as image_file:
+                image = image_file.read()
+        image = MIMEImage(image, name=name)
+        msg.attach(image)
 
     # Establish a connection to the SMTP server
     server = smtplib.SMTP(smtp_server, smtp_port)
