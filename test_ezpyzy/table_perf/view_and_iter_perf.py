@@ -40,6 +40,10 @@ with ez.Timer('Selecting from copied view'):
     copy_select = copied[selection]
 assert len(copy_select) == len(selection)
 
+with ez.Timer('Iterating over table'):
+    for row in table:
+        pass
+
 with ez.Timer('Iterating over table columns'):
     list(zip(table.A, table.B, table.C))
 
