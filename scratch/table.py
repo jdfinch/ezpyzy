@@ -28,9 +28,9 @@ def column_del(name):
 ElementType = T.TypeVar('ElementType')
 
 class Column(T.Generic[ElementType]):
-    __get = column_get
-    __set = column_set
-    __del = column_del
+    __get = None
+    __set = None
+    __del = None
 
     def __init__(self):
         self.table: Table = None # noqa
@@ -45,18 +45,21 @@ RowType = T.TypeVar('RowType', bound='Tabular')
 
 class Table(T.Generic[RowType]):
     """Table of rows."""
-    _RowSpec: T.Type[RowType] = None
+    __RowSpec: T.Type[RowType] = None
     __flexible: bool = False
 
     def __init__(self, *datas, **columns):
-        self._rows = []
-        self._meta = TableMeta(self)
+        self.__rows = []
+        self.__meta = TableMeta(self)
 
     def __iter__(self) -> T.Iterator[RowType]:
-        return iter(self._rows)
+        return iter(self.__rows)
+
+    def __len__(self) -> int:
+        return len(self.__rows)
 
     def __call__(self):
-        return self._meta
+        return self.__meta
 
     def __pos__(self):
         """Copy the table."""
@@ -68,13 +71,48 @@ class Table(T.Generic[RowType]):
         inverted.__flexible = True
         return inverted
 
-    def __iadd__(self, other):
+    def __iadd__(self, other) -> T.Self:
         """Add one or more rows to the table."""
+        if isinstance(other, (list, tuple)):
+            if not other:
+                return self
+            first = other[0]
+            if isinstance(first, (list, tuple)):
+                self.__rows.extend([self.__RowSpec(*row) for row in other])
+            elif isinstance(first, Tabular):
+                self.__rows.extend(other)
+            elif isinstance(first, dict):
+                self.__rows.extend([self.__RowSpec(**row) for row in other])
+            else:
+                raise TypeError(f"Row wise concat does not support {type(other)} of {type(first)}")
+        elif isinstance(other, Table):
+            ...
+        elif isinstance(other, dict):
+            ...
+        else:
+            raise TypeError(f"Row wise concat does not support {type(other)}")
+        return self
+
+    def __isub__(self, other) -> T.Self:
+        """Add one or more columns to the table."""
+        if isinstance(other, dict):
+            for name, column in other.items():
+                if column is None: # fill with None
+                    ...
+                else:
+                    ...
+        elif isinstance(other, Table):
+            assert len(other.__rows) == len(self.__rows)
+            ...
+        elif isinstance(other, Column):
+            ...
+        elif isinstance(other, (list, tuple)):  # anonymous column, auto-name
+            assert len(other) == len(self.__rows)
+            ...
+        else:                                   # anonymous column with broadcasted value
+            ...
         return ...
 
-    def __isub__(self, other):
-        """Add one or more columns to the table."""
-        return ...
 
     def __getitem__(self, selection) -> Table[RowType] | RowType:
         """Return a view of the table or row"""
@@ -99,6 +137,8 @@ class Table(T.Generic[RowType]):
                 first = selection[0]
                 if isinstance(first, int):
                     ...
+                elif isinstance(first, slice):
+                    ...
                 elif isinstance(first, (Column, ellipsis)):
                     column_names = dict.fromkeys([col.name for col in selection if col is not ...])
                     if len(column_names) < len(selection): # if ... in selection
@@ -106,7 +146,7 @@ class Table(T.Generic[RowType]):
                         for column in selection:
                             if column is ...:
                                 column_names.update(
-                                    c.name for c in self._meta if c.name not in column_names)
+                                    c.name for c in self.__meta if c.name not in column_names)
                             else:
                                 all_column_names[column.name] = None
                         column_names = all_column_names
@@ -124,6 +164,14 @@ class Table(T.Generic[RowType]):
             ...
         return ...
 
+    def __setitem__(self, key, value):
+        """Switch in new table rows, mutate column-wise, or mutate cell-wise."""
+        ...
+
+    def __delitem__(self, key):
+        """Remove rows, columns, or data from the table."""
+        ...
+
 empty_table = Table()
 
 
@@ -138,8 +186,7 @@ class TableMeta(T.Generic[MetaRowType]):
         non_column_attrs = vars(empty_table)
         return [
             col for attr, col in vars(self.table).items()
-            if attr not in non_column_attrs
-        ]
+            if attr not in non_column_attrs]
 
     def __iter__(self) -> T.Iterator[Column]:
         return iter(self.columns())
@@ -147,6 +194,7 @@ class TableMeta(T.Generic[MetaRowType]):
     def group(self,
         key:T.Iterable[GroupKeyType]|T.Callable[[RowType], GroupKeyType]
     ) -> dict[GroupKeyType, Table[MetaRowType]]:
+        """Group rows by some key and return a dict of the groups."""
         return ...
 
 
@@ -159,10 +207,11 @@ class Tabular:
     @classmethod
     def s(cls: T.Type[TabularType], *datas, **columns) -> Table[TabularType]|TabularType:
         table = Table[cls](*datas, **columns)
-        table._RowSpec = cls
+        table.__RowSpec = cls
         return table
 
     def __getattr__(self, item):
+        setattr(type(self), item, None)
         return None
 
 
@@ -184,11 +233,12 @@ def tabular(cls: type[TabularDataClassType]) -> type[TabularDataClassType]:
     class_vars = vars(cls)
     fields = tabular_fields(cls)
     for name, column_type in fields.items():
-        class_vars[name] = property(
-            column_type.__get(name),
-            column_type.__set(name),
-            column_type.__del(name)
-        )
+        if any(x is not None for x in (column_type.__get, column_type.__set, column_type.__del)):
+            class_vars[name] = property(
+                column_type.__get(name),
+                column_type.__set(name),
+                column_type.__del(name)
+            )
     return cls
 
 

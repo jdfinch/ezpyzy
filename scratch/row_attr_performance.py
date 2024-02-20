@@ -173,3 +173,30 @@ with Timer('Iter rows with descriptor two hop'):
 with Timer('Iter rows with descriptor setter'):
     for row in table:
         row.a = 0
+
+
+
+class MyNoneGet:
+    def __init__(self, name):
+        self.a = name
+    def __getattr__(self, item):
+        return None
+
+class NoneGetWithClassAttr:
+    def __init__(self, name):
+        self.a = name
+    def __getattr__(self, item):
+        setattr(type(self), item, None)
+        return None
+
+table = [MyNoneGet(i) for i in range(10 ** 7)]
+
+with Timer('Iter rows with none get'):
+    for row in table:
+        x = row.b
+
+table = [NoneGetWithClassAttr(i) for i in range(10 ** 7)]
+
+with Timer('Iter rows with none get with class attr'):
+    for row in table:
+        x = row.b

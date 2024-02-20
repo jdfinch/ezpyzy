@@ -276,7 +276,7 @@ class Table:
         if view._origin is None:
             view._origin = self
         view._columns = {}
-        view._meta = Meta(view)
+        view.__meta = Meta(view)
         rows = None
         cols = None
         if isinstance(selects, int):
