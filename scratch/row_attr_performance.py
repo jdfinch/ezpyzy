@@ -23,9 +23,13 @@ table = [RowTuple(i, i, i) for i in range(10**7)]
 double = [RowTuple(i, i, i, table[i]) for i in range(10**7)]
 falls = [RowFallthrough(i, i, table[i]) for i in range(10**7)]
 
-with Timer('Iter control'):
+with Timer('Iter control get'):
     for row in control:
         x = row[0]
+
+with Timer('Iter control set'):
+    for row in control:
+        row[0] = 0
 
 with Timer('Iter rows get attr'):
     for row in table:
@@ -38,6 +42,11 @@ with Timer('Iter rows get attr two hop'):
 with Timer('Iter rows get attr fallthrough'):
     for row in falls:
         x = row.c
+
+with Timer('Iter rows set attr'):
+    for row in table:
+        row.a = 0
+
 
 
 class RowTuple:
@@ -77,6 +86,10 @@ with Timer('Iter rows get attr two hop no slots'):
 with Timer('Iter rows get attr fallthrough no slots'):
     for row in falls:
         x = row.c
+
+with Timer('Iter rows set attr no slots'):
+    for row in table:
+        row.a = 0
 
 
 class PropertyRow:
@@ -139,13 +152,12 @@ with Timer('Iter rows setter'):
 
 
 def MyDescriptor(name):
-    name = '__'+name
     def get(self):
-        return getattr(self, name)
+        return self.__dict__[name]
     def set(self, value):
-        setattr(self, name, value)
+        self.__dict__[name] = value
     def delete(self):
-        delattr(self, name)
+        del self.__dict__[name]
     return property(get, set, delete)
 
 class DescriptorRow:
@@ -173,6 +185,22 @@ with Timer('Iter rows with descriptor two hop'):
 with Timer('Iter rows with descriptor setter'):
     for row in table:
         row.a = 0
+
+with Timer('Iter rows with descriptor __dict__ get'):
+    for row in table:
+        x = row.__dict__['a']
+
+with Timer('Iter rows with descriptor __dict__ set'):
+    for row in table:
+        row.__dict__['a'] = 0
+
+with Timer('Iter rows with descriptor object.__getattribute__'):
+    for row in table:
+        x = object.__getattribute__(row, 'a')
+
+with Timer('Iter rows with descriptor object.__setattr__'):
+    for row in table:
+        object.__setattr__(row, 'a', 0)
 
 
 

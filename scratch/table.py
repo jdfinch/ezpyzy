@@ -1,44 +1,65 @@
 from __future__ import annotations
 import dataclasses as dc
+import weakref as wr
 from dataclasses import dataclass
 import copy
 import typing as T
-
-
-def column_get(name):
-    name = '__'+name
-    def get(self: Tabular):
-        return getattr(self, name)
-    return get
-
-def column_set(name):
-    name = '__'+name
-    def set(self: Tabular, value):
-        setattr(self, name, value)
-    return set
-
-def column_del(name):
-    name = '__'+name
-    def delete(self: Tabular):
-        delattr(self, name)
-    return delete
 
 
 
 ElementType = T.TypeVar('ElementType')
 
 class Column(T.Generic[ElementType]):
-    __get = None
-    __set = None
-    __del = None
+    def __init__(column, name: str = None):
+        column.__table: Table = None # noqa
+        column.name: str|None = name
+        class Descriptor:
+            def __init__(descriptor, name):
+                descriptor.name = name
+            def __set__(descriptor, row, value):
+                column.__validate_set([getattr(row, descriptor.name)], [value]) # noqa
+                setattr(row, descriptor.name, value)
+            def __del__(descriptor, row):
+                column.__validate_rem([getattr(row, descriptor.name)]) # noqa
+        column.__descriptor = Descriptor(column.name)
 
-    def __init__(self):
-        self.table: Table = None # noqa
-        self.name: str = None # noqa
+    @property
+    def table(self):
+        return self.__table
+
+    def __validate_add(self, rows: tuple|Column):
+        """Validate adding rows to the table."""
+        return
+
+    def __validate_rem(self, rows: tuple|Column):
+        """Validate removing rows from the table."""
+        return
+
+    def __validate_set(self, old: tuple|Column, new: tuple|Column):
+        """Validate replacing row data in the table."""
+        self.__validate_rem(old)
+        self.__validate_add(new)
+
+    def __add(self, rows: tuple|Column):
+        """Add rows to the table."""
+        return
+
+    def __rem(self, rows: tuple|Column):
+        """Remove rows from the table."""
+        return
+
+    def __set(self, old: tuple|Column, new: tuple|Column):
+        """Replace row data in the table."""
+        self.__rem(old)
+        self.__add(new)
 
     def __iter__(self) -> T.Iterator[ElementType]:
         attr = self.name
-        return iter(getattr(row, attr) for row in self.table)
+        return iter(getattr(row, attr) for row in self.__table)
+
+    def __len__(self):
+        return len(self.__table)
+
 
 
 RowType = T.TypeVar('RowType', bound='Tabular')
@@ -46,72 +67,161 @@ RowType = T.TypeVar('RowType', bound='Tabular')
 class Table(T.Generic[RowType]):
     """Table of rows."""
     __RowSpec: T.Type[RowType] = None
-    __flexible: bool = False
+    """Class for rows in the table."""
+    __UnvalidatedRowSpec: T.Type[RowType] = None
+    """Class for rows in the table without column descriptors for validation"""
+    __from_inflexible: Table[RowType]|None = None
+    """For flexible tables, backpointer to inflexible version of the table"""
+    __id_column: str|None = None
+    """Name of the column that is the primary key (str keys) for the table"""
+    __sort_column: str|None = None
+    """Name of the column that is the sort key for the table"""
 
     def __init__(self, *datas, **columns):
-        self.__rows = []
-        self.__meta = TableMeta(self)
+        self._rows_ = []
+        self._meta_ = TableMeta(self)
+        self._columns_: dict[str, Column] = {}
 
     def __iter__(self) -> T.Iterator[RowType]:
-        return iter(self.__rows)
+        return iter(self._rows_)
 
     def __len__(self) -> int:
-        return len(self.__rows)
+        return len(self._rows_)
 
     def __call__(self):
-        return self.__meta
+        return self._meta_
 
     def __pos__(self):
         """Copy the table."""
         return ...
 
     def __invert__(self) -> Table[RowType]:
-        """Mark the table as concatenate-flexible."""
+        """Mark the table as flexible."""
         inverted = self[...]
         inverted.__flexible = True
+        inverted.__inflexible = self
         return inverted
+
+    def __enter__(self):
+        """Return a version of the table where column invariants are unenforced until exit"""
+        return self.__invert__()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """Validate columns"""
+        table = self.__inflexible
+        columns = {c: None for n, c in table.__dict__.items() if isinstance(c, Column)}
+        for column in reversed(columns):
+            column = copy.copy(column)
+            column.__table = None
+            column.__validate_add(table._rows_)
 
     def __iadd__(self, other) -> T.Self:
         """Add one or more rows to the table."""
-        if isinstance(other, (list, tuple)):
+        columns = {c: None for n, c in self.__dict__.items() if isinstance(c, Column)}
+        if isinstance(other, Tabular):
+            for column in reversed(columns):
+                column.__validate_add((getattr(other, column.name),))
+            for column in reversed(columns):
+                column.__add((getattr(other, column.name),))
+            other.__tables__ = wr.WeakSet((self, *other.__tables__))
+            self._rows_.append(other)
+        elif isinstance(other, dict):
+            other_lens = set(len(x) for x in other.values() if isinstance(x, list))
+            assert len(other_lens) == 1, \
+                "All columns must have the same length and at least one must be non-broadcast"
+            other_len, = other_lens
+            other = {n: v if isinstance(v, list) else [v] * other_len for n, v in other.items()}
+            names, other_columns = list(other.keys()), list(other.values())
+            other_data = zip(*other_columns)
+            other_rows = [self.__UnvalidatedRowSpec(**dict(zip(names, row))) for row in other_data]
+            for column in reversed(columns):
+                column.__validate_add([getattr(x, column.name) for x in other_rows])
+            for column in reversed(columns):
+                column.__add([getattr(x, column.name) for x in other_rows])
+            for row in other_rows:
+                row.__class__ = self.__RowSpec
+                row.__tables__ = wr.WeakSet((self, *row.__tables__))
+            self._rows_.extend(other_rows)
+        if isinstance(other, list):
             if not other:
                 return self
             first = other[0]
-            if isinstance(first, (list, tuple)):
-                self.__rows.extend([self.__RowSpec(*row) for row in other])
-            elif isinstance(first, Tabular):
-                self.__rows.extend(other)
+            if isinstance(first, Tabular):
+                for column in reversed(columns):
+                    column.__validate_add([getattr(x, column.name) for x in other])
+                for column in reversed(columns):
+                    column.__add([getattr(x, column.name) for x in other])
+                for row in other:
+                    row.__tables__ = wr.WeakSet((self, *row.__tables__))
+                self._rows_.extend(other)
+            elif isinstance(first, (list, tuple)):
+                other_rows = [self.__UnvalidatedRowSpec(*row) for row in other]
+                for column in reversed(columns):
+                    column.__validate_add([getattr(x, column.name) for x in other_rows])
+                for column in reversed(columns):
+                    column.__add([getattr(x, column.name) for x in other_rows])
+                for row in other_rows:
+                    row.__class__ = self.__RowSpec
+                    row.__tables__ = wr.WeakSet((self, *row.__tables__))
+                self._rows_.extend(other_rows)
             elif isinstance(first, dict):
-                self.__rows.extend([self.__RowSpec(**row) for row in other])
+                other_rows = [self.__UnvalidatedRowSpec(**row) for row in other]
+                for column in reversed(columns):
+                    column.__validate_add([getattr(x, column.name) for x in other_rows])
+                for column in reversed(columns):
+                    column.__add([getattr(x, column.name) for x in other_rows])
+                for row in other_rows:
+                    row.__class__ = self.__RowSpec
+                    row.__tables__ = wr.WeakSet((self, *row.__tables__))
+                self._rows_.extend(other_rows)
             else:
                 raise TypeError(f"Row wise concat does not support {type(other)} of {type(first)}")
         elif isinstance(other, Table):
-            ...
-        elif isinstance(other, dict):
-            ...
+            for column in reversed(columns):
+                column.__validate_add(getattr(other, column.name))
+            for column in reversed(columns):
+                column.__add(getattr(other, column.name))
+            for row in other._rows_:
+                row.__tables__ = wr.WeakSet((self, *row.__tables__))
+            self._rows_.extend(other._rows_)
         else:
             raise TypeError(f"Row wise concat does not support {type(other)}")
         return self
 
     def __isub__(self, other) -> T.Self:
         """Add one or more columns to the table."""
+        columns = {n: c for n, c in self.__dict__.items() if isinstance(c, Column)}
         if isinstance(other, dict):
-            for name, column in other.items():
-                if column is None: # fill with None
-                    ...
+            for name, column in list(other.items()):
+                assert name not in columns, f"Column {name} already exists in the table"
+                if isinstance(column, list):
+                    assert len(column) == len(self._rows_), \
+                        f"Column {name} must be an iterable of length {len(self._rows_)}"
                 else:
-                    ...
+                    other[name] = [column] * len(self._rows_)
+            for name, column in other.items():
+                new_column = Column(name)
+                self.__dict__[name] = new_column
+                new_column.__table = self
+            ...
         elif isinstance(other, Table):
-            assert len(other.__rows) == len(self.__rows)
+            assert len(other._rows_) == len(self._rows_), \
+                "Table must have the same number of rows as the table it is being added to"
+            for name, column in other.__dict__.items():
+                assert name not in columns, f"Column {name} already exists in the table"
+                new_column = Column(name)
+                self.__dict__[name] = new_column
+                new_column.__table = self
             ...
         elif isinstance(other, Column):
+            assert len(other) == len(self._rows_)
             ...
-        elif isinstance(other, (list, tuple)):  # anonymous column, auto-name
-            assert len(other) == len(self.__rows)
+        elif isinstance(other, list):  # anonymous column, auto-name
+            assert len(other) == len(self._rows_)
             ...
-        else:                                   # anonymous column with broadcasted value
+        else:  # broadcast value to anonymous column
             ...
-        return ...
+        return self
 
 
     def __getitem__(self, selection) -> Table[RowType] | RowType:
@@ -146,7 +256,7 @@ class Table(T.Generic[RowType]):
                         for column in selection:
                             if column is ...:
                                 column_names.update(
-                                    c.name for c in self.__meta if c.name not in column_names)
+                                    c.name for c in self._meta_ if c.name not in column_names)
                             else:
                                 all_column_names[column.name] = None
                         column_names = all_column_names
@@ -172,7 +282,9 @@ class Table(T.Generic[RowType]):
         """Remove rows, columns, or data from the table."""
         ...
 
-empty_table = Table()
+    def __delattr__(self, item):
+        """Remove columns from the table."""
+        ...
 
 
 MetaRowType = T.TypeVar('MetaRowType')
@@ -182,14 +294,14 @@ class TableMeta(T.Generic[MetaRowType]):
     def __init__(self, table: Table[MetaRowType]):
         self.table: Table[MetaRowType] = table
 
-    def columns(self) -> T.List[Column]:
-        non_column_attrs = vars(empty_table)
-        return [
-            col for attr, col in vars(self.table).items()
-            if attr not in non_column_attrs]
+    def columns(self) -> T.Dict[str, Column]:
+        return dict(self.table._columns_)
 
     def __iter__(self) -> T.Iterator[Column]:
-        return iter(self.columns())
+        return iter(self.table._columns_.values())
+
+    def __getitem__(self, item: str):
+        return self.table._columns_[item]
 
     def group(self,
         key:T.Iterable[GroupKeyType]|T.Callable[[RowType], GroupKeyType]
@@ -198,16 +310,21 @@ class TableMeta(T.Generic[MetaRowType]):
         return ...
 
 
-TabularType = T.TypeVar('TabularType')
+TabularType = T.TypeVar('TabularType', bound='Tabular')
 
 class Tabular:
     """Row type. Inherit from this to create a Table/Row format."""
-    __table__:Table|None = None
+    __tables__: set[Table] = frozenset()
 
     @classmethod
-    def s(cls: T.Type[TabularType], *datas, **columns) -> Table[TabularType]|TabularType:
+    def s(
+        cls: T.Type[TabularType],
+        *datas: TabularType,
+        **columns
+    ) -> Table[TabularType]|TabularType:
         table = Table[cls](*datas, **columns)
         table.__RowSpec = cls
+        table.__UnvalidatedRowSpec = cls.__unvalidated
         return table
 
     def __getattr__(self, item):
@@ -215,7 +332,7 @@ class Tabular:
         return None
 
 
-def tabular_fields(cls):
+def tabular_fields(cls) -> dict[str, T.Type]:
     fields = {}
     for field in dc.fields(cls):
         for first_union_type in T.get_args(field.type):
@@ -224,23 +341,39 @@ def tabular_fields(cls):
             break
     return fields
 
+def tabular_spec(cls) -> dict[str, T.Any]:
+    fields = {}
+    for field in dc.fields(cls):
+        for first_union_type in T.get_args(field.type):
+            if Column in getattr(first_union_type, '__mro__', ()):
+                spec = cls.__dict__[field.name]
+                if isinstance(spec, Column):
+                    fields[field.name] = spec.__class__
+                elif isinstance(spec, type) and issubclass(spec, Column):
+                    fields[field.name] = spec
+            break
+    return fields
 
-TabularDataClassType = T.TypeVar('TabularDataClassType')
 
-@T.dataclass_transform()
+TabularDataClassType = T.TypeVar('TabularDataClassType', bound=Tabular)
+
+#@T.dataclass_transform()
 def tabular(cls: type[TabularDataClassType]) -> type[TabularDataClassType]:
     cls = dataclass(cls)
-    class_vars = vars(cls)
-    fields = tabular_fields(cls)
+    class validated_cls(cls): pass
+    fields = tabular_fields(validated_cls)
+    class_vars = vars(validated_cls)
     for name, column_type in fields.items():
-        if any(x is not None for x in (column_type.__get, column_type.__set, column_type.__del)):
-            class_vars[name] = property(
-                column_type.__get(name),
-                column_type.__set(name),
-                column_type.__del(name)
-            )
-    return cls
+        descriptor = cls.__descriptor
+        if descriptor is not None:
+            class_vars[name] = descriptor(name)
+    validated_cls.__unvalidated = cls
+    return validated_cls
 
 
 ColElementType = T.TypeVar('ColElementType')
 Col = T.Union[Column[ColElementType], ColElementType, None]
+
+
+if __name__ == '__main__':
+    Col()

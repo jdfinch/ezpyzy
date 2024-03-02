@@ -275,8 +275,8 @@ class Table:
         vars(view).update([(k, v) for k, v in vars(self).items() if not isinstance(v, Column)])
         if view._origin is None:
             view._origin = self
-        view._columns = {}
-        view.__meta = Meta(view)
+        view._columns_ = {}
+        view._meta_ = Meta(view)
         rows = None
         cols = None
         if isinstance(selects, int):
@@ -554,7 +554,7 @@ class Table:
         for name, column in a_new.items():
             result._set_attr(name, column)
         for name, column in b_new.items():
-            if name not in result._columns:
+            if name not in result._columns_:
                 result._set_attr(name, column)
         return result
 
@@ -618,7 +618,7 @@ class Table:
         for name, column in a_new.items():
             result._set_attr(name, column)
         for name, column in b_new.items():
-            if name not in result._columns:
+            if name not in result._columns_:
                 result._set_attr(name, column)
         return result
 
@@ -688,7 +688,7 @@ class Table:
         for name, column in a_new.items():
             result._set_attr(name, column)
         for name, column in b_new.items():
-            if name not in result._columns:
+            if name not in result._columns_:
                 result._set_attr(name, column)
         return result
 
