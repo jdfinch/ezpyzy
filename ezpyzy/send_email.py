@@ -4,6 +4,7 @@ Easily send emails programmatically using Python.
 
 import smtplib
 import json
+import traceback as tb
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
@@ -58,18 +59,19 @@ def send_email(recipient, subject, message, **images):
         image = MIMEImage(image, name=name)
         msg.attach(image)
 
-    # Establish a connection to the SMTP server
-    server = smtplib.SMTP(smtp_server, smtp_port)
-    server.starttls()  # Start TLS encryption (optional)
-
-    # Login to your email account
-    server.login(sender_email, sender_password)
-
-    # Send the email
-    server.sendmail(sender_email, recipient, msg.as_string())
-
-    # Close the connection
-    server.quit()
+    try:
+        # Establish a connection to the SMTP server
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()  # Start TLS encryption (optional)
+        # Login to your email account
+        server.login(sender_email, sender_password)
+        # Send the email
+        server.sendmail(sender_email, recipient, msg.as_string())
+        # Close the connection
+        server.quit()
+    except Exception as e:
+        print("Error: unable to send email:", e)
+        tb.print_exc()
 
 
 
@@ -78,5 +80,4 @@ if __name__ == "__main__":
     subject = "Hello from Python!"
     message = "This is a test email sent from Python."
     recipient = "recipient@gmail.com"
-
     send_email(recipient, subject, message)

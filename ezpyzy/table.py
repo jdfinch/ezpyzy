@@ -160,9 +160,11 @@ class Table:
                 elif isinstance(first_row, dict):
                     columns = {}
                     for i, row in enumerate(data):
+                        for column in columns.values():
+                            column.append(None)
                         for name, value in row.items():
                             try:
-                                columns[name].append(value)
+                                columns[name][-1] = value
                             except KeyError:
                                 columns[name] = [None] * i
                                 columns[name].append(value)
@@ -643,10 +645,10 @@ class Meta(T.Generic[T2]):
     @path.setter
     def path(self, path:ez.filelike):
         self.table._path = ez.File(path).path
-    def save(self, path:ez.filelike=None):
+    def save(self, path:ez.filelike=None, json_cells=True):
         col_types = {k: v[1] for k, v in column_type_map(type(self.table)).items()}
         columns = [[col.name] + [
-            json.dumps(val) for val in col
+            json.dumps(val) if json_cells else val for val in col
         ] for col in self.columns]
         rows = zip(*columns)
         if path is None:
