@@ -1,5 +1,5 @@
 from __future__ import annotations
-import scratch.table as tab
+import scratch._table as tab
 import dataclasses as dc
 from dataclasses import dataclass as tabular; vars().update(tabular=tab.tabular)
 from ezpyzy import settings
@@ -56,7 +56,7 @@ b += Turn(id='xyz', index=4)
 
 my_turn = a[1]
 
-b += my_turn # to copy, or to reference?
+b += my_turn # add my_turn to b as a row
 my_turn.id = 'xyz' # should raise error, xyz already exists as an id in the table (if reference)
 
 my_turn.id = 'abc' # should raise error, abc already exists as an id in the table
