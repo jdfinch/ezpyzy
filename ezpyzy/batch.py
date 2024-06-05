@@ -30,3 +30,17 @@ def batched(fn:T.Callable[[list, ...], list] = None, batch_size=1
             combined.extend(batch_result)
         return combined
     return batched_fn
+
+
+
+if __name__ == '__main__':
+
+    batch = ...
+
+    data = ...
+
+    fn = ...
+
+    with batch(data) as batched:
+        results = [fn(x) for x in batched]
+

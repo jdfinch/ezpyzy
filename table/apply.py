@@ -55,14 +55,14 @@ if __name__ == '__main__':
     from ezpyzy.timer import Timer
 
     with Timer('Creating data'):
-        row = [rng.randint(0, h) for h in range(10**4)]
-        data = [list(row) for _ in range(10**4)]
+        row = [rng.randint(0, h) for h in range(10**2)]
+        data = [list(row) for _ in range(10**6)]
 
 
     def foo(x: str, y: list[int]) -> str:
         return '/'.join(f"{x}: {y}".lower().split())[:100]
 
-    for ll in range(1, 10):
+    for ll in range(2, 8):
         with Timer(f'With {ll} processes'):
             with apply(foo, processes=ll, batchsize=None) as summify:
                 sums = [summify('Random numbers', row) for row in data]
@@ -73,3 +73,21 @@ if __name__ == '__main__':
     print(sums[273])
 
 
+    for ll in range(2, 8):
+        with Timer(f'Traditional multiprocessing with {ll} processes'):
+            with mp.Pool(processes=ll) as pool:
+                sums = pool.starmap(foo, [('Random numbers', row) for row in data])
+        print(sums[273])
+
+
+    '''
+    Problem: Gaining performance from parallelism is fundamentally a divide-and-conquer problem.
+             However, if the majority of work is done element-by-element such as calling functions
+             or collating elements to send to worker processes, the performance gain disappears.
+             
+             This happens in the above example because the amount of apply work per element is low.
+             
+             A better way is to just batch the list of data ahead of time and send each batch to
+             a different worker process. This way, within each batch, there is no overhead, so a
+             small amount of work per element doesn't matter.
+    '''
