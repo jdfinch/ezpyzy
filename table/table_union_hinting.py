@@ -31,7 +31,6 @@ class ColumnMeta(T.Generic[ColumnMetaColumnType]):
         return self.col
 
 
-
 ''' ============================== Table ============================== '''
 
 CellType = T.TypeVar('CellType')
