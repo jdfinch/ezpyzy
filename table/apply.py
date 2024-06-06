@@ -2,6 +2,7 @@
 from __future__ import annotations
 import typing as T
 import itertools as it
+import time
 from ezpyzy.batch import batched
 
 
@@ -9,9 +10,42 @@ globalized_fn_tag = '__globalized_multiprocessed_function_'
 
 
 class progress:
-    def __init__(self, iterable=None, label=''):
+    def __init__(self, iterable=None, label='', total=None, length=40, fill='█', print_end="\r"):
         self.iterable = iterable
         self.label = label
+        self.total = total if total is not None else len(iterable) if iterable is not None else 0
+        self.length = length
+        self.fill = fill
+        self.print_end = print_end
+
+    def __iter__(self):
+        self.start_time = time.time()
+        self.iteration = 0
+        return self
+
+    def __next__(self):
+        if self.iterable is not None and self.iteration < self.total:
+            item = next(self.iterable)
+            self.iteration += 1
+            self.print_progress()
+            return item
+        else:
+            self.finish()
+            raise StopIteration
+
+    def print_progress(self):
+        percent = "{0:.1f}".format(100 * (self.iteration / float(self.total)))
+        filled_length = int(self.length * self.iteration // self.total)
+        bar = self.fill * filled_length + '-' * (self.length - filled_length)
+        elapsed_time = time.time() - self.start_time
+        estimated_total_time = elapsed_time / self.iteration * self.total if self.iteration > 0 else 0
+        remaining_time = estimated_total_time - elapsed_time
+        sys.stdout.write(f'\r{self.label} |{bar}| {percent}% Complete | {elapsed_time:.2f}s')
+        sys.stdout.flush()
+
+    def finish(self):
+        print()
+
         
         
 def globalize(fn: callable):
@@ -87,7 +121,11 @@ def multiprocess(
         if progress_bar:
             print(f'n_processes={n_processes} ({n_processes_reason}) batch_count={batch_count} ({batch_count_reason}) batch_size={len(batches[0]) if batches else 0} ({batch_size_reason})' + (f' batches_per_chunk={batches_per_chunk} ({batches_per_chunk_reason})' if batches_per_chunk != 1 or batches_per_chunk_reason == "given" else '')) # noqa
         with mp.Pool(processes=n_processes) as pool:
-            results = list(pool.imap(global_fn, batches, chunksize=batches_per_chunk))
+            iterator = pool.imap(global_fn, batches, chunksize=batches_per_chunk)
+            if progress_bar:
+                iterator = progress(
+                    iterator, label=progress_bar if isinstance(progress_bar, str) else '', total=len(batches))
+            results = list(iterator)
     results = tuple(it.chain(*results))
     return results
 
@@ -104,15 +142,13 @@ if __name__ == '__main__':
     def main():
 
         with Timer('Create data'):
-            
-            data = [[*range(10**5)] for n in range(10**3)]
-            
+            data = [[*range(10**1)] for n in range(10**7)]
 
         with Timer('Batch multiprocessing'):
             print()
             def batch_sum(batch=data):
                 return [int(', '.join([str(x) for x in item]).replace(', ', '')[:100]) for item in batch]
-            results = multiprocess(batch_sum, batch_size=2, n_processes=20, progress_bar=True)
+            results = multiprocess(batch_sum, n_processes=0, batch_size=1000, progress_bar=True)
 
             print(sum(results))
 
