@@ -6,7 +6,7 @@ import typing as T
 from ezpyzy.allargs import allargs
 from ezpyzy.argcast import argcast
 from ezpyzy.autocache import autocache
-from ezpyzy.batch import batch, batched
+from ezpyzy.batch import batching, batched
 from ezpyzy.bind import bind
 from ezpyzy.captured_vars import CapturedVars
 from ezpyzy.check import check

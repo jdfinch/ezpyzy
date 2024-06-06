@@ -1,93 +1,125 @@
 
 from __future__ import annotations
 import typing as T
-import os
-import math
-import multiprocessing as mp
-import functools as ft
-from ezpyzy.captured_vars import CapturedVars
+import itertools as it
+from ezpyzy.batch import batched
 
 
-F = T.TypeVar('F')
-
-class MultiprocessedFunctionApplyContext(T.Generic[F]):
-    def __init__(self, fn: F, processes=-1, batchsize=None):
-        self.fn = fn
-        self.processes = os.cpu_count() if processes == -1 else processes
-        self.batchsize = batchsize
-        self.captured = None
-        self.pool = None
-
-    def __call__(self, *args, **kwargs):
-        assert self.pool is not None, \
-            f"Function {self.fn} applied with ez.apply was called without entering a multiprocessing context. " \
-            f"To create the apply context, use a with block like:\n    with apply({self.fn.__name__}) as f: ..."
-        return ft.partial(self.fn, *args, **kwargs)
-
-    def __enter__(self) -> F:
-        self.captured = CapturedVars(2).__enter__()
-        self.pool = mp.Pool(processes=self.processes).__enter__()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.captured.__exit__(exc_type, exc_val, exc_tb)
-        for var, val in self.captured:
-            if val is self: continue
-            results = self.pool.map(call, val, chunksize=self.batchsize)
-            setattr(self.captured, var, list(results))
-        self.pool.__exit__(exc_type, exc_val, exc_tb)
-        self.pool = None
-        self.captured = None
-
-def call(f):
-    return f()
+globalized_fn_tag = '__globalized_multiprocessed_function_'
 
 
-def apply(fn: F, processes=-1, batchsize=None) -> MultiprocessedFunctionApplyContext[F]:
-    return MultiprocessedFunctionApplyContext(fn, processes=processes, batchsize=batchsize)
+class progress:
+    def __init__(self, iterable=None, label=''):
+        self.iterable = iterable
+        self.label = label
+        
+        
+def globalize(fn: callable):
+    globalized_fn_name = ''.join((
+        globalized_fn_tag, 
+        '_'.join(c if c.isalnum() else '_' for c in fn.__qualname__), 
+        str(id(fn))))
+    def global_fn(*args, **kwargs):
+        return fn(*args, **kwargs)
+    fn_module = sys.modules[global_fn.__module__]
+    if not hasattr(fn_module, globalized_fn_name):
+        global_fn.__name__ = global_fn.__qualname__ = globalized_fn_name
+        setattr(fn_module, global_fn.__name__, global_fn)
+    else:
+        global_fn = getattr(fn_module, globalized_fn_name)
+    return global_fn
 
+
+J = T.TypeVar('J', bound=T.Iterable)
+R = T.TypeVar('R')
+
+def multiprocess(
+    fn:T.Callable[[J], R],
+    data:J=None,
+    n_processes=None,
+    batch_size=None,
+    batch_count=None,
+    batches_per_chunk=None,
+    progress_bar=None
+) -> R:
+    parameters = tuple(ins.signature(fn).parameters.values())
+    data = parameters[0].default if data is None else data
+    if (n_processes, batch_size, batch_count) == (None, None, None):
+        n_processes = mp.cpu_count()
+        n_processes_reason = 'cpus'
+    elif isinstance(n_processes, int) and n_processes <= 0:
+        n_processes_reason = f'cpus-{abs(n_processes)}'
+        n_processes = max(mp.cpu_count() + n_processes, 1)
+    elif isinstance(n_processes, float):
+        n_processes_reason = f'cpus*{n_processes}'
+        n_processes = max(int(mp.cpu_count() * n_processes), 1)
+    elif n_processes is not None:
+        n_processes_reason = 'given'
+    if (batch_size, batch_count) == (None, None):
+        batch_count_reason = 'n'
+        batch_count = n_processes
+        batch_size_reason = 'data/n'
+    elif batch_count is None and batch_size is not None:
+        batch_count_reason = 'data/b.size'
+        batch_size_reason = 'given'
+    elif batch_count is not None and batch_size is None:
+        batch_size_reason = 'data/batches'
+        batch_count_reason = 'given'
+    batches = batched(data, size=batch_size, number=batch_count)
+    batch_count = len(batches)
+    if n_processes is None:
+        n_processes = mp.cpu_count()
+        n_processes_reason = 'cpus'
+        if n_processes > batch_count:
+            n_processes = batch_count
+            n_processes_reason = 'batches'
+    if n_processes == 1:
+        if progress_bar:
+            print(f'Single process ({n_processes_reason}) batch_count={batch_count} ({batch_size_reason}) batch_size={len(batches[0]) if batches else 0} ({batch_count_reason})') # noqa
+        results = [fn(batch) for batch in batches]
+    else:
+        global_fn = globalize(fn)
+        if batches_per_chunk is None:
+            batches_per_chunk = batch_count // n_processes + int(bool(batch_count % n_processes))
+            batches_per_chunk_reason = 'batches/procs'
+        else:
+            batches_per_chunk_reason = 'given'
+        if progress_bar:
+            print(f'n_processes={n_processes} ({n_processes_reason}) batch_count={batch_count} ({batch_count_reason}) batch_size={len(batches[0]) if batches else 0} ({batch_size_reason})' + (f' batches_per_chunk={batches_per_chunk} ({batches_per_chunk_reason})' if batches_per_chunk != 1 or batches_per_chunk_reason == "given" else '')) # noqa
+        with mp.Pool(processes=n_processes) as pool:
+            results = list(pool.imap(global_fn, batches, chunksize=batches_per_chunk))
+    results = tuple(it.chain(*results))
+    return results
 
 
 
 if __name__ == '__main__':
 
-    import random as rng
-    from ezpyzy.timer import Timer
+    from ezpyzy import Timer
+    import multiprocessing as mp
+    from ezpyzy.cat import cat
+    import inspect as ins
+    import sys
 
-    with Timer('Creating data'):
-        row = [rng.randint(0, h) for h in range(10**2)]
-        data = [list(row) for _ in range(10**6)]
+    def main():
 
+        with Timer('Create data'):
+            
+            data = [[*range(10**5)] for n in range(10**3)]
+            
 
-    def foo(x: str, y: list[int]) -> str:
-        return '/'.join(f"{x}: {y}".lower().split())[:100]
+        with Timer('Batch multiprocessing'):
+            print()
+            def batch_sum(batch=data):
+                return [int(', '.join([str(x) for x in item]).replace(', ', '')[:100]) for item in batch]
+            results = multiprocess(batch_sum, batch_size=2, n_processes=20, progress_bar=True)
 
-    for ll in range(2, 8):
-        with Timer(f'With {ll} processes'):
-            with apply(foo, processes=ll, batchsize=None) as summify:
-                sums = [summify('Random numbers', row) for row in data]
-        print(sums[273])
-
-    with Timer('Single process'):
-        sums = [foo('Random numbers', row) for row in data]
-    print(sums[273])
-
-
-    for ll in range(2, 8):
-        with Timer(f'Traditional multiprocessing with {ll} processes'):
-            with mp.Pool(processes=ll) as pool:
-                sums = pool.starmap(foo, [('Random numbers', row) for row in data])
-        print(sums[273])
+            print(sum(results))
 
 
-    '''
-    Problem: Gaining performance from parallelism is fundamentally a divide-and-conquer problem.
-             However, if the majority of work is done element-by-element such as calling functions
-             or collating elements to send to worker processes, the performance gain disappears.
-             
-             This happens in the above example because the amount of apply work per element is low.
-             
-             A better way is to just batch the list of data ahead of time and send each batch to
-             a different worker process. This way, within each batch, there is no overhead, so a
-             small amount of work per element doesn't matter.
-    '''
+        with Timer('Single process'):
+
+            results = batch_sum(data)
+            print(sum(results))
+
+    main()
