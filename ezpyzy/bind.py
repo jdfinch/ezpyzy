@@ -1,33 +1,22 @@
 
 from __future__ import annotations
 
-import functools
+import functools as ft
 import typing as T
 
 
-F = T.TypeVar('F')
+F = T.TypeVar('F', bound=T.Callable)
 
-def bind(bound:F) -> F | T.Callable[..., F]:
-    @functools.wraps(bound)
-    def wrapper(*args, **kwargs):
-        arguments = []
-        for arg in args:
-            if arg is not ...:
-                arguments.append(arg)
-            else:
-                break
-        return functools.partial(bound,
-            *arguments,
-            **{k: v for k, v in kwargs.items() if v is not ...}
-        )
-    return wrapper
+def bind(bound:F) -> F|T.Callable[..., F]:
+    return ft.partial(ft.partial, bound)
 
 
 if __name__ == '__main__':
 
-    def foo(x=None, y=None):
+    def foo(x:int=None, y:float=None) -> float:
         return x + y
 
-    bar = bind(foo)(1, ...)
-    print(bar(y=2))
+    bar = bind(foo)(y=3)
+    bat = bar(2)
+    print(bat)
 
