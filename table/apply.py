@@ -2,80 +2,23 @@
 from __future__ import annotations
 import typing as T
 import itertools as it
-import time
-from ezpyzy.batch import batched
-
-
-globalized_fn_tag = '__globalized_multiprocessed_function_'
-
-
-class progress:
-    def __init__(self, iterable=None, label='', total=None, length=40, fill='█', print_end="\r"):
-        self.iterable = iterable
-        self.label = label
-        self.total = total if total is not None else len(iterable) if iterable is not None else 0
-        self.length = length
-        self.fill = fill
-        self.print_end = print_end
-
-    def __iter__(self):
-        self.start_time = time.time()
-        self.iteration = 0
-        return self
-
-    def __next__(self):
-        if self.iterable is not None and self.iteration < self.total:
-            item = next(self.iterable)
-            self.iteration += 1
-            self.print_progress()
-            return item
-        else:
-            self.finish()
-            raise StopIteration
-
-    def print_progress(self):
-        percent = "{0:.1f}".format(100 * (self.iteration / float(self.total)))
-        filled_length = int(self.length * self.iteration // self.total)
-        bar = self.fill * filled_length + '-' * (self.length - filled_length)
-        elapsed_time = time.time() - self.start_time
-        estimated_total_time = elapsed_time / self.iteration * self.total if self.iteration > 0 else 0
-        remaining_time = estimated_total_time - elapsed_time
-        sys.stdout.write(f'\r{self.label} |{bar}| {percent}% Complete | {elapsed_time:.2f}s')
-        sys.stdout.flush()
-
-    def finish(self):
-        print()
-
-        
-        
-def globalize(fn: callable):
-    globalized_fn_name = ''.join((
-        globalized_fn_tag, 
-        '_'.join(c if c.isalnum() else '_' for c in fn.__qualname__), 
-        str(id(fn))))
-    def global_fn(*args, **kwargs):
-        return fn(*args, **kwargs)
-    fn_module = sys.modules[global_fn.__module__]
-    if not hasattr(fn_module, globalized_fn_name):
-        global_fn.__name__ = global_fn.__qualname__ = globalized_fn_name
-        setattr(fn_module, global_fn.__name__, global_fn)
-    else:
-        global_fn = getattr(fn_module, globalized_fn_name)
-    return global_fn
+import functools as ft
+from ezpyzy.timer import Timer
+from ezpyzy.globalize import globalize
 
 
 J = T.TypeVar('J', bound=T.Iterable)
 R = T.TypeVar('R')
 
 def multiprocess(
-    fn:T.Callable[[J], R],
+    fn:T.Callable[[J], T.Sequence[R]],
     data:J=None,
     n_processes=None,
     batch_size=None,
     batch_count=None,
     batches_per_chunk=None,
-    progress_bar=None
-) -> R:
+    display=False
+) -> tuple[R]:
     parameters = tuple(ins.signature(fn).parameters.values())
     data = parameters[0].default if data is None else data
     if (n_processes, batch_size, batch_count) == (None, None, None):
@@ -93,23 +36,34 @@ def multiprocess(
         batch_count_reason = 'n'
         batch_count = n_processes
         batch_size_reason = 'data/n'
-    elif batch_count is None and batch_size is not None:
-        batch_count_reason = 'data/b.size'
+        batch_size = len(data) // batch_count + int(bool(len(data) % batch_count))
+    elif batch_size is not None:
+        batch_count_reason = 'data/batchsize'
         batch_size_reason = 'given'
-    elif batch_count is not None and batch_size is None:
+        batch_count = len(data) // batch_size + int(bool(len(data) % batch_size))
+    else:
         batch_size_reason = 'data/batches'
         batch_count_reason = 'given'
-    batches = batched(data, size=batch_size, number=batch_count)
-    batch_count = len(batches)
+        batch_size = len(data) // batch_count + int(bool(len(data) % batch_count))
     if n_processes is None:
         n_processes = mp.cpu_count()
         n_processes_reason = 'cpus'
         if n_processes > batch_count:
             n_processes = batch_count
             n_processes_reason = 'batches'
+    batching_timer = Timer()
     if n_processes == 1:
-        if progress_bar:
-            print(f'Single process ({n_processes_reason}) batch_count={batch_count} ({batch_size_reason}) batch_size={len(batches[0]) if batches else 0} ({batch_count_reason})') # noqa
+        if display:
+            print(f'{fn.__name__}:  n_processes={n_processes} ({n_processes_reason}),  batch_count={batch_count} ({batch_size_reason}),  batch_size={batch_size} ({batch_count_reason})') # noqa
+            print('    batching', end='.. ' )
+        if hasattr(data, '__getitem__') and hasattr(data, '__len__'):
+            batches = [data[i:i + batch_size] for i in range(0, len(data), batch_size)]
+        else:
+            iterator = iter(data)
+            batches = list(it.takewhile(bool, (tuple(it.islice(iterator, batch_size)) for _ in it.count())))
+        if display:
+            print(batching_timer.str.stop(), end=', ')
+        processing_timer = Timer()
         results = [fn(batch) for batch in batches]
     else:
         global_fn = globalize(fn)
@@ -118,44 +72,68 @@ def multiprocess(
             batches_per_chunk_reason = 'batches/procs'
         else:
             batches_per_chunk_reason = 'given'
-        if progress_bar:
-            print(f'n_processes={n_processes} ({n_processes_reason}) batch_count={batch_count} ({batch_count_reason}) batch_size={len(batches[0]) if batches else 0} ({batch_size_reason})' + (f' batches_per_chunk={batches_per_chunk} ({batches_per_chunk_reason})' if batches_per_chunk != 1 or batches_per_chunk_reason == "given" else '')) # noqa
+        if display:
+            print(f'{fn.__name__}:  n_processes={n_processes} ({n_processes_reason}),  batch_count={batch_count} ({batch_count_reason}),  batch_size={batch_size} ({batch_size_reason})' + (f',  batches_per_chunk={batches_per_chunk} ({batches_per_chunk_reason})' if batches_per_chunk != 1 or batches_per_chunk_reason == "given" else '')) # noqa
+            print('    batching', end='.. ' )
+        if hasattr(data, '__getitem__') and hasattr(data, '__len__'):
+            batches = [data[i:i + batch_size] for i in range(0, len(data), batch_size)]
+        else:
+            iterator = iter(data)
+            batches = list(it.takewhile(bool, (tuple(it.islice(iterator, batch_size)) for _ in it.count())))
+        if display:
+            print(batching_timer.str.stop(), end=', ')
+        processing_timer = Timer()
+        print('processing', end='.. ')
         with mp.Pool(processes=n_processes) as pool:
             iterator = pool.imap(global_fn, batches, chunksize=batches_per_chunk)
-            if progress_bar:
-                iterator = progress(
-                    iterator, label=progress_bar if isinstance(progress_bar, str) else '', total=len(batches))
             results = list(iterator)
+    if display:
+        print(processing_timer.str.stop(), end=', ')
+    compiling_timer = Timer()
+    print('compiling', end='.. ' )
     results = tuple(it.chain(*results))
-    return results
+    if display:
+        print(compiling_timer.str.stop())
+        print('    total:', (batching_timer.delta + processing_timer.delta + compiling_timer.delta).display())
+    return results # noqa
 
+
+F = T.TypeVar('F', bound=T.Callable)
+
+def multiprocessed(
+    n_processes=None,
+    batch_size=None,
+    batch_count=None,
+    batches_per_chunk=None,
+    display=False
+) -> T.Callable[[F], F]:
+    bound_multiprocess = ft.partial(multiprocess,
+        n_processes=n_processes,
+        batch_size=batch_size,
+        batch_count=batch_count,
+        batches_per_chunk=batches_per_chunk,
+        progress_bar=display)
+    return ft.partial(ft.partial, bound_multiprocess)
 
 
 if __name__ == '__main__':
 
     from ezpyzy import Timer
     import multiprocessing as mp
-    from ezpyzy.cat import cat
     import inspect as ins
-    import sys
 
     def main():
 
         with Timer('Create data'):
             data = [[*range(10**1)] for n in range(10**7)]
 
-        with Timer('Batch multiprocessing'):
-            print()
-            def batch_sum(batch=data):
-                return [int(', '.join([str(x) for x in item]).replace(', ', '')[:100]) for item in batch]
-            results = multiprocess(batch_sum, n_processes=0, batch_size=1000, progress_bar=True)
+        print()
+        def batch_sum(batch=data):
+            return [int(', '.join([str(x) for x in item]).replace(', ', '')[:100]) for item in batch]
+        results = multiprocess(batch_sum, n_processes=2.0, display=True)
 
-            print(sum(results))
-
-
+        print()
         with Timer('Single process'):
-
             results = batch_sum(data)
-            print(sum(results))
 
     main()

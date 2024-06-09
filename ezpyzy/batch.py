@@ -31,7 +31,8 @@ def batched(iterable: T.Iterable | T.Sized, size=None, number=None):
     if hasattr(iterable, '__getitem__') and hasattr(iterable, '__len__'):
         return [iterable[i:i+size] for i in range(0, len(iterable), size)]
     else:
-        return list(batching(iterable, size, number))
+        iterator = iter(iterable)
+        return list(it.takewhile(bool, (tuple(it.islice(iterator, size)) for _ in it.count())))
 
 
 
