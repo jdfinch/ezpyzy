@@ -3,8 +3,6 @@ from __future__ import annotations
 import dataclasses
 import typing as T
 
-from ezpyzy.allargs import allargs
-from ezpyzy.argcast import argcast
 from ezpyzy.autocache import autocache
 from ezpyzy.batch import batching, batched
 from ezpyzy.bind import bind
