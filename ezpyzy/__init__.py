@@ -6,7 +6,7 @@ import typing as T
 from ezpyzy.autocache import autocache
 from ezpyzy.batch import batching, batched
 from ezpyzy.bind import bind
-from ezpyzy.captured_vars import CapturedVars
+from ezpyzy.scope import Scope
 from ezpyzy.check import check
 from contextlib import nullcontext as collapsable
 from ezpyzy.denominate import denominate

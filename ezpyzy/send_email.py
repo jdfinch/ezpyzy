@@ -11,18 +11,16 @@ import os
 
 def send_email(recipient, subject, message):
     """
-    Send an email to the specified recipient with the specified subject and message. Create the file:
+    Send an email to the specified recipient with the specified subject and message.
+    To use, create an App Password in a Gmail account, then create this file:
 
     ~/.pw/gmail.json
 
     {
         "smtp_server": "smtp.gmail.com",
-
         "smtp_port": 587,
-
-        "sender_email": "address@gmail.com",
-
-        "sender_password": "app_password"
+        "sender_email": "your_email_address@gmail.com",
+        "sender_password": "your_app_password"
     }
     """
     # Determine the user's home directory
@@ -62,10 +60,12 @@ def send_email(recipient, subject, message):
 
 
 
-# Usage example
 if __name__ == "__main__":
     subject = "Hello from Python!"
     message = "This is a test email sent from Python."
-    recipient = "recipient@gmail.com"
+    recipient = "jamesfinch293@gmail.com"
 
-    send_email(recipient, subject, message)
+    from ezpyzy.timer import Timer
+
+    with Timer('Emailing'):
+        send_email(recipient, subject, message)
