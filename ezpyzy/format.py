@@ -7,6 +7,7 @@ import json
 import csv
 import pickle
 import ezpyzy.file
+import ezpyzy.pyon as pyon
 import typing as T
 
 
@@ -176,4 +177,19 @@ class TSV(Savable):
         )
         writer.writerows(self)
         return str_io.getvalue()
+
+
+class PYON(Savable):
+
+    extension = ['pyon']
+
+    @classmethod
+    def deserialize(cls, string):
+        obj = pyon.PYONDecoder().decode(string)
+        assert isinstance(obj, cls), f"PYON object is not of the expected type: {cls}"
+        return obj
+
+    def serialize(self: ..., *args, **kwargs):
+        return pyon.PYONEncoder().encode(self)
+
 

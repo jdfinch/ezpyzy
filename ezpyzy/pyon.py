@@ -6,19 +6,12 @@ import json
 import pathlib as pl
 import sys
 import importlib as imp
+from ezpyzy.digiterate import digiterate
 import hashlib as hl
 import base64 as b64
 
-
-class PYON:
-
-    extension = ['tab']
-
-    def deserialize(cls, string):
-        ...
-
-    def serialize(self: ..., *args, **kwargs):
-        ...
+prefix = '~@&MW|'
+suffix = '|WM&@~'
 
 
 class PYONEncoder:
@@ -26,7 +19,7 @@ class PYONEncoder:
         super().__init__()
         self.types = {}
         self.ids = {}
-        self.id_counter = 0
+        self.id_generator = iter(digiterate())
 
     def encode(self, o):
         t = type(o)
@@ -49,10 +42,7 @@ class PYONEncoder:
         i = id(o)
         if i in self.ids:
             return self.ids[i]
-        swizz_id = b64.b64encode(
-            hl.sha1(self.id_counter.to_bytes(8, sys.byteorder)).digest()
-        ).decode('ascii')
-        self.id_counter += 1
+        swizz_id = ''.join((prefix, next(self.id_generator), suffix))
         self.ids[i] = ''.join(('"', swizz_id, '"'))
         if t is list:
             return ''.join((
@@ -161,55 +151,13 @@ def get_import_path(cls_or_fn):
 
 def import_path(import_path):
     module, name = import_path.rsplit('.', 1)
-    module = imp.import_module(module)
-    obj = getattr(module, name)
+    main_module_path = pl.Path(sys.modules['__main__'].__file__)
+    cwd = pl.Path.cwd()
+    main_module_path = main_module_path.relative_to(cwd)
+    main_module = '.'.join((*main_module_path.parts[:-1], main_module_path.stem))
+    if module == main_module:
+        module = '__main__'
+    if module not in sys.modules:
+        sys.modules[module] = imp.import_module(module)
+    obj = getattr(sys.modules[module], name)
     return obj
-
-
-class Foo:
-    pass
-
-class Bar:
-    pass
-
-if __name__ == '__main__':
-
-
-    content = """{
-      "^ezpyzy.pyon.Foo": "12345678",
-        "a": {
-          "list": "90123456",
-          "": [1, 2, 3, "12345678"]
-        },
-        "b": -5.3,
-        "c": "hello world",
-        "d": "90123456",
-        "e": {
-          "^ezpyzy.pyon.Bar": "6789012",
-          "parent": "12345678",
-          "baz": {
-              "dict": "97539842",
-              "": [["x", 1], ["𝀷", 2], ["z", 3]]
-          },
-          "bat": {
-              "set": "97539842",
-              "": [1, 2, 3]
-          }
-        },
-        "f": null,
-        "g": true,
-        "h": "6789012",
-        "i": {
-          "tuple": [1, 2, 3]
-        }
-    }
-    """
-    decoder = PYONDecoder()
-    pyon = decoder.decode(content)
-    encoder = PYONEncoder()
-    intermediate_pyon = encoder.encode(pyon)
-    print('Intermediate:')
-    print(intermediate_pyon, '\n\n')
-    final_decoder = PYONDecoder()
-    final_pyon = final_decoder.decode(intermediate_pyon)
-    print(final_pyon)
