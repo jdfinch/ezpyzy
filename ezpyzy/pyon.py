@@ -1,21 +1,19 @@
 
 from __future__ import annotations
 
-import base64
 import json
 import pathlib as pl
 import sys
 import importlib as imp
 from ezpyzy.digiterate import digiterate
-import hashlib as hl
-import base64 as b64
+
 
 prefix = '~@&MW|'
 suffix = '|WM&@~'
 
 
 class PYONEncoder:
-    def __init__(self):
+    def __init__(self,): # todo: add compatibility layer to allow unsupported types
         super().__init__()
         self.types = {}
         self.ids = {}
@@ -70,7 +68,7 @@ class PYONEncoder:
 
 
 class PYONDecoder:
-    def __init__(self):
+    def __init__(self): # todo: add compatibility layer to allow unsupported types
         super().__init__()
         self.swizz = {}
         self.types = {}
@@ -127,7 +125,7 @@ class PYONDecoder:
         if t in self.types:
             t = self.types[t]
         else:
-            t = self.types.setdefault(t, import_path(t[1:]))
+            t = self.types.setdefault(t, import_from_path(t[1:]))
         if isinstance(t, type):
             o = object.__new__(t) # noqa
         else:
@@ -149,7 +147,7 @@ def get_import_path(cls_or_fn):
     import_path = '.'.join((*path.parts[:-1], path.stem, name))
     return import_path
 
-def import_path(import_path):
+def import_from_path(import_path):
     module, name = import_path.rsplit('.', 1)
     main_module_path = pl.Path(sys.modules['__main__'].__file__)
     cwd = pl.Path.cwd()

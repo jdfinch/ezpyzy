@@ -1,10 +1,11 @@
-"""
-To make progress here, we need more flexible deterministic serialization.
-"""
 
+from __future__ import annotations
 
-def hash(*obj):
-    ...
+import inspect as ins
+
+from ezpyzy.hash import hash
+from ezpyzy.pyon import PYONEncoder, PYONDecoder
+from ezpyzy.file import File
 
 
 def cache(folder='.cache', include_inputs=False):
