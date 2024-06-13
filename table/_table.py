@@ -4,7 +4,7 @@ import weakref as wr
 from dataclasses import dataclass
 import copy
 import typing as T
-from ezpyzy.digital_iteration import digital_iteration
+from ezpyzy.digiterate import digiterate
 import pathlib as pl
 from ezpyzy.file import File
 

@@ -4,7 +4,6 @@ from ezpyzy import file
 import typing as T
 
 
-
 class AutocachedFunction:
 
     def __init__(self, fn, format):

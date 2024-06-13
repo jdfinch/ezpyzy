@@ -113,9 +113,10 @@ class JSON(Savable):
             obj = vars(self)
         return json.dumps(obj, *args, **kwargs)
 
+
 class CSV(Savable):
 
-    extensions = ['csv', 'tsv']
+    extensions = ['csv',]
 
     @classmethod
     def deserialize(cls, string, *args, **kwargs):
@@ -141,4 +142,38 @@ class Pickle(Savable):
 
     def serialize(self: ..., *args, **kwargs):
         return pickle.dumps(self, *args, **kwargs)
+
+
+class TSV(Savable):
+
+    extensions = ['tsv',]
+
+    @classmethod
+    def deserialize(cls, string):
+        str_io = io.StringIO(string)
+        reader = csv.reader(
+            str_io,
+            delimiter='\t',
+            quotechar='`',
+            doublequote=True,
+            quoting=csv.QUOTE_MINIMAL,
+            skipinitialspace=False,
+            strict=True,
+        )
+        return list(reader)
+
+
+    def serialize(self: ..., *args, **kwargs):
+        str_io = io.StringIO()
+        writer = csv.writer(
+            str_io,
+            delimiter='\t',
+            quotechar='`',
+            doublequote=True,
+            quoting=csv.QUOTE_MINIMAL,
+            skipinitialspace=False,
+            strict=True,
+        )
+        writer.writerows(self)
+        return str_io.getvalue()
 

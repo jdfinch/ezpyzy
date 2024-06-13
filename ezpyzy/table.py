@@ -192,7 +192,7 @@ class Table:
         if isinstance(value, Column) and '_columns' in vars(self):
             if key is None:
                 existing_col_names = {col.name for col in self()}
-                for name in it.cycle(ez.digital_iteration(chars="ABCDEFGHIJKLMNOPQRSTUVWXYZ")):
+                for name in it.cycle(ez.digiterate(chars="ABCDEFGHIJKLMNOPQRSTUVWXYZ")):
                     if name not in existing_col_names:
                         key = name
                         break

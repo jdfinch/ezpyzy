@@ -10,7 +10,7 @@ from ezpyzy.scope import Scope
 from ezpyzy.check import check
 from contextlib import nullcontext as collapsable
 from ezpyzy.denominate import denominate
-from ezpyzy.digital_iteration import digital_iteration
+from ezpyzy.digiterate import digiterate
 from ezpyzy.expydite import explore
 from ezpyzy.file import File, filelike
 from ezpyzy.format import Savable, Text, CSV, JSON, Bytes, Pickle, formatlike
