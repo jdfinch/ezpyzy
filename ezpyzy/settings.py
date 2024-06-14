@@ -74,7 +74,7 @@ def specified(fn: F2) -> F2:
             self_param = next(iter(specified))
             self_arg = specified[self_param]
             del specified[self_param]
-            self_arg.settings = specified
+            self_arg.settings = specifiedsco
             return fn(*args, **kwargs)
     return wrapper
 

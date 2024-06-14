@@ -14,10 +14,10 @@ def printing(queue: q.Queue):
             break
         for ch in s:
             print(ch, end='', flush=True)
-            time.sleep(0.1)
+            time.sleep(0.2)
 
-queue = q.Queue()
-worker = th.Thread(target=printing, args=(queue,), daemon=True)
+queue = mp.Queue()
+worker = mp.Process(target=printing, args=(queue,), daemon=True)
 worker.start()
 
 def cleanup():

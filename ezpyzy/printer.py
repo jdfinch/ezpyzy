@@ -96,3 +96,13 @@ class NamedColor:
         return f"Color({self.name})"
     __repr__ = __str__
 
+
+
+if __name__ == '__main__':
+
+    for name, color in NamedColor._fg.items():
+        print(f"{color}{name}", end='\n\r')
+
+
+    for name, color in NamedColor._bg.items():
+        print(f"{color}{name}", end='\033[0m\n')
