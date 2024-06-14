@@ -7,6 +7,7 @@ from ezpyzy.bind import bind
 from ezpyzy.cat import cat
 from ezpyzy.check import check
 from contextlib import nullcontext as collapsable # noqa
+from debugging import debugging
 from ezpyzy.default import default
 from ezpyzy.denominate import denominate
 from ezpyzy.digiterate import digiterate
