@@ -6,11 +6,11 @@ globalized_tag = '__globalized__'
 
 def globalize(fn):
     """
-    Function to register a function or class in global scope so that it can be pickled.
+    Function to register a function or class in global scope so that it can be pickled or otherwise recognized.
     """
     globalized_fn_name = ''.join((
         globalized_tag,
-        '_'.join(c if c.isalnum() else '_' for c in fn.__qualname__),
+        ''.join(c if c.isalnum() else '_' for c in fn.__qualname__),
         str(id(fn))))
     def global_fn(*args, **kwargs):
         return fn(*args, **kwargs)

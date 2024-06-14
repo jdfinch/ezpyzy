@@ -1,16 +1,18 @@
 
+
 from __future__ import annotations
+
 import typing as T
 import itertools as it
 import functools as ft
-from ezpyzy.timer import Timer
 from ezpyzy.globalize import globalize
+from ezpyzy.batch import batched
 
 
 J = T.TypeVar('J', bound=T.Iterable)
 R = T.TypeVar('R')
 
-def multiprocess(
+def _multiprocess(
     fn:T.Callable[[J], T.Sequence[R]],
     data:J=None,
     n_processes=None,
@@ -78,42 +80,48 @@ def multiprocess(
         if hasattr(data, '__getitem__') and hasattr(data, '__len__'):
             batches = [data[i:i + batch_size] for i in range(0, len(data), batch_size)]
         else:
-            iterator = iter(data)
-            batches = list(it.takewhile(bool, (tuple(it.islice(iterator, batch_size)) for _ in it.count())))
+            batches = batched(data, size=batch_size, number=batch_count)
         if display:
             print(batching_timer.str.stop(), end=', ')
-        processing_timer = Timer()
-        print('processing', end='.. ')
-        with mp.Pool(processes=n_processes) as pool:
+            processing_timer = Timer()
+            print('processing', end='.. ')
+        with mp.get_context('fork').Pool(processes=n_processes) as pool:
             iterator = pool.imap(global_fn, batches, chunksize=batches_per_chunk)
             results = list(iterator)
     if display:
-        print(processing_timer.str.stop(), end=', ')
-    compiling_timer = Timer()
-    print('compiling', end='.. ' )
+        print(processing_timer.str.stop(), end=', ') # noqa
+        compiling_timer = Timer()
+        print('compiling', end='.. ' )
     results = tuple(it.chain(*results))
     if display:
-        print(compiling_timer.str.stop())
+        print(compiling_timer.str.stop()) # noqa
         print('    total:', (batching_timer.delta + processing_timer.delta + compiling_timer.delta).display())
     return results # noqa
 
 
 F = T.TypeVar('F', bound=T.Callable)
 
-def multiprocessed(
+def multiprocess(
+    fn:T.Callable[[J], T.Sequence[R]]=None,
+    data:J=None,
     n_processes=None,
     batch_size=None,
     batch_count=None,
     batches_per_chunk=None,
     display=False
-) -> T.Callable[[F], F]:
-    bound_multiprocess = ft.partial(multiprocess,
-        n_processes=n_processes,
-        batch_size=batch_size,
-        batch_count=batch_count,
-        batches_per_chunk=batches_per_chunk,
-        progress_bar=display)
-    return ft.partial(ft.partial, bound_multiprocess)
+) -> tuple[R] | T.Callable[[F], F]:
+    if fn is None:
+        bound_multiprocess = ft.partial(_multiprocess,
+            n_processes=n_processes,
+            batch_size=batch_size,
+            batch_count=batch_count,
+            batches_per_chunk=batches_per_chunk,
+            progress_bar=display)
+        return ft.partial(ft.partial, bound_multiprocess)
+    else:
+        return _multiprocess(
+            fn, data, n_processes, batch_size, batch_count, batches_per_chunk, display)
+
 
 
 if __name__ == '__main__':
@@ -123,17 +131,31 @@ if __name__ == '__main__':
     import inspect as ins
 
     def main():
-
         with Timer('Create data'):
-            data = [[*range(10**1)] for n in range(10**7)]
+            data = [[*range(10 ** 1)] for n in range(10 ** 6)]
 
         print()
-        def batch_sum(batch=data):
-            return [int(', '.join([str(x) for x in item]).replace(', ', '')[:100]) for item in batch]
-        results = multiprocess(batch_sum, n_processes=2.0, display=True)
+
+        with Timer('Batch multiprocessing'):
+            def batch_sum(batch=data):
+                return [int(', '.join([str(x) for x in item]).replace(', ', '')[:100]) for item in batch]
+            results = _multiprocess(batch_sum, n_processes=8, display=False)
 
         print()
         with Timer('Single process'):
             results = batch_sum(data)
+
+
+    def alt_batch_sum(batch):
+        return [int(', '.join([str(x) for x in item]).replace(', ', '')[:100]) for item in batch]
+
+
+    data = [[*range(10 ** 1)] for n in range(10 ** 6)]
+
+    def alt():
+        batches = batched(data, number=48)
+        with Timer('Alt'):
+            with mp.Pool(processes=48) as pool:
+                results = list(pool.imap(alt_batch_sum, batches, chunksize=1))
 
     main()

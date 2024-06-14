@@ -4,7 +4,6 @@ Write tests using a context manager.
 Alternative to method-based testing like pytest, for quick-and-dirty testing where tests are sequentially dependent.
 """
 
-
 import sys
 import traceback as tb
 import io
@@ -33,7 +32,7 @@ class Check:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.timer.stop()
-        time = self.timer.display
+        time = self.timer.str.elapsed
         if not self.show:
             sys.stdout = self.stdout
             sys.stderr = self.stderr
