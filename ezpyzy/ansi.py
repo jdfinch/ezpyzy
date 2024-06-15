@@ -1,6 +1,8 @@
 
 from __future__ import annotations
 import typing as T
+from collections import deque
+import contextlib as cl
 import sys
 import os
 import re
@@ -10,7 +12,6 @@ if os.name == 'nt' or sys.platform == "win32":
 else:
     import sys
     import termios
-
 
 _input_ = sys.stdin
 _output_ = sys.stdout
@@ -259,9 +260,10 @@ if __name__ == '__main__':
     print(color(55, 100, 200), end='')
     for i in range(10):
         print('-'*25)
-        with cursor_save():
-            print(cursor_to_yx(3, 0), end='')
-            print('Screen size', screen_get_size(), end='     ')
+        pos = cursor_get_yx()
+        print(cursor_to_yx(3, 0), end='')
+        print('Screen size', screen_get_size(), end='     ')
+        print(cursor_to_yx(*pos), end='')
         time.sleep(0.5)
     print(color('lightgreen'), end='')
     print(cursor_to_yx(6, 5), end='')
