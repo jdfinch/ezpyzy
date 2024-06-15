@@ -1,125 +1,98 @@
+"""
+Unix only for now (no windows to dev/test on!)
+"""
 
 import os
 
-# Windows
-if os.name == 'nt':
-    import msvcrt
+# if os.name == 'nt':
+#     """Windows"""
+#     import msvcrt
+# else:
+#     """Unix"""
+import sys
+import termios
+import atexit
+from select import select
 
-# Posix (Linux, OS X)
-else:
-    import sys
-    import termios
-    import atexit
-    from select import select
 
-
-class KBHit:
-    """
-    A Python class implementing KBHIT, the standard keyboard-interrupt poller.
-    Works transparently on Windows and Posix (Linux, Mac OS X).  Doesn't work
-    with IDLE.
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Lesser General Public License as
-    published by the Free Software Foundation, either version 3 of the
-    License, or (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-    """
+class KeyListener:
     def __init__(self):
-        """Creates a KBHit object that you can call to do various keyboard things."""
-        if os.name == 'nt':
-            pass
+        self.fd = sys.stdin.fileno()
+        self.old_terminal = termios.tcgetattr(self.fd)
+        self.new_terminal = termios.tcgetattr(self.fd)
+        self.new_terminal[3] = (self.new_terminal[3] & ~termios.ICANON & ~termios.ECHO)
+        termios.tcsetattr(self.fd, termios.TCSAFLUSH, self.new_terminal)
+        atexit.register(self.reset_terminal)
+        self.chords = {
+            '\x1b[A': 'up',
+            '\x1b[C': 'right',
+            '\x1b[B': 'down',
+            '\x1b[D': 'left',
+            '\x1b[H': 'home',
+            '\x1b[F': 'end',
+            '\x1b[1;5A': 'ctrl-up',
+            '\x1b[1;5B': 'ctrl-down',
+            '\x1b[1;5C': 'ctrl-right',
+            '\x1b[1;5D': 'ctrl-left',
+            '\x1b[1;2A': 'shift-up',
+            '\x1b[1;2B': 'shift-down',
+            '\x1b[1;2C': 'shift-right',
+            '\x1b[1;2D': 'shift-left',
+            '\x1b[1;2H': 'shift-home',
+            '\x1b[1;2F': 'shift-end',
+            '\x1b[1;5H': 'ctrl-home',
+            '\x1b[1;5F': 'ctrl-end',
+            '\x1b[1;6A': 'ctrl-shift-up',
+            '\x1b[1;6B': 'ctrl-shift-down',
+            '\x1b[1;6C': 'ctrl-shift-right',
+            '\x1b[1;6D': 'ctrl-shift-left',
+            '\x1b[1;6H': 'ctrl-shift-home',
+            '\x1b[1;6F': 'ctrl-shift-end',
+            '\x1b[3~': 'delete',
+            '\x1b[Z': 'shift-tab',
+            '\x1b[2~': 'insert',
+            '\x1b[5~': 'page-up',
+            '\x1b[6~': 'page-down',
+            '\x7f': 'backspace',
+            '\x1b\x7f': 'alt-backspace'
+        }
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.reset_terminal()
+
+    def reset_terminal(self):
+        termios.tcsetattr(self.fd, termios.TCSAFLUSH, self.old_terminal)
+
+    def listen_for_key_press(self):
+        select([sys.stdin], [], [], None)[0]
+        char = sys.stdin.read(1)
+        if char == '\x1b':
+            candidate_chords = [chord for chord in self.chords if chord.startswith(char)]
+            while True:
+                read = sys.stdin.read(1)
+                if read == '\n':
+                    break
+                char += read
+                candidate_chords = [chord for chord in candidate_chords if chord.startswith(char)]
+                if len(candidate_chords) <= 1:
+                    break
         else:
-            # Save the terminal settings
-            self.fd = sys.stdin.fileno()
-            self.new_term = termios.tcgetattr(self.fd)
-            self.old_term = termios.tcgetattr(self.fd)
-            # New terminal setting unbuffered
-            self.new_term[3] = (self.new_term[3] & ~termios.ICANON & ~termios.ECHO)
-            termios.tcsetattr(self.fd, termios.TCSAFLUSH, self.new_term)
-            # Support normal-terminal reset at exit
-            atexit.register(self.set_normal_term)
-
-
-    def set_normal_term(self):
-        """Resets to normal terminal.  On Windows this is a no-op."""
-        if os.name == 'nt':
-            pass
+            char = char[0] + char[1:].rstrip('\n')
+        if char in self.chords:
+            return self.chords[char]
+        elif char.startswith('\x1b'):
+            return 'alt-' + char[1:]
+        elif len(char) == 1 and ord(char) < 32:
+            return 'ctrl-' + chr(ord(char) + 64)
         else:
-            termios.tcsetattr(self.fd, termios.TCSAFLUSH, self.old_term)
-
-    def getch(self):
-        """Returns a keyboard character after kbhit() has been called.
-            Should not be called in the same program as getarrow()."""
-        s = ''
-        if os.name == 'nt':
-            return msvcrt.getch().decode('utf-8')
-        else:
-            return sys.stdin.read(1)
-
-
-    def getarrow(self):
-        """Returns an arrow-key code after kbhit() has been called. Codes are
-        0 : up
-        1 : right
-        2 : down
-        3 : left
-        Should not be called in the same program as getch()."""
-        if os.name == 'nt':
-            msvcrt.getch() # skip 0xE0
-            c = msvcrt.getch()
-            vals = [72, 77, 80, 75]
-        else:
-            c = sys.stdin.read(3)[2]
-            vals = [65, 67, 66, 68]
-        return vals.index(ord(c.decode('utf-8')))
-
-    def get_key_press(self):
-        if os.name == 'nt':
-            code = msvcrt.getch()
-            arrow_map = {
-                72: 'up',
-                77: 'right',
-                80: 'down',
-                75: 'left',
-            }
-            char = code.decode('utf-8')
-            if ord(char) in arrow_map:
-                return arrow_map[ord(char)]
-            else:
-                return char
-        else:
-            char = sys.stdin.read(1)
-            print('Read:', ord(char))
-            if ord(char) == 27:
-                char += sys.stdin.read(2)
-            arrow_map = {
-                '\x1b[A': 'up',
-                '\x1b[C': 'right',
-                '\x1b[B': 'down',
-                '\x1b[D': 'left',
-            }
-            return arrow_map.get(char, char)
-
-
-    def kbhit(self, timeout=None):
-        """Returns True if keyboard character was hit, False otherwise."""
-        if os.name == 'nt':
-            return msvcrt.kbhit()
-        else:
-            dr,dw,de = select([sys.stdin], [], [], timeout)
-            return dr != []
+            return char
 
 
 if __name__ == "__main__":
-
-    kb = KBHit()
-    print('Hit any key, or ESC to exit')
-    while True:
-        if kb.kbhit():
-            c = kb.get_key_press()
-            print(f'You hit: {c}!')
+    with KeyListener() as kb:
+        while True:
+            input = kb.listen_for_key_press()
+            print('Got:', repr(input), ord(input[0]))
