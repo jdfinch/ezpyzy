@@ -2,13 +2,8 @@
 Unix only for now (no windows to dev/test on!)
 """
 
-import os
+from __future__ import annotations
 
-# if os.name == 'nt':
-#     """Windows"""
-#     import msvcrt
-# else:
-#     """Unix"""
 import sys
 import termios
 import atexit
@@ -66,8 +61,15 @@ class KeyListener:
     def reset_terminal(self):
         termios.tcsetattr(self.fd, termios.TCSAFLUSH, self.old_terminal)
 
+    def get_key_press(self, seconds_to_wait:int|None=0):
+        select([sys.stdin], [], [], seconds_to_wait)[0]
+        return self._handle_key_press()
+
     def listen_for_key_press(self):
         select([sys.stdin], [], [], None)[0]
+        return self._handle_key_press()
+
+    def _handle_key_press(self):
         char = sys.stdin.read(1)
         if char == '\x1b':
             candidate_chords = [chord for chord in self.chords if chord.startswith(char)]
@@ -92,7 +94,15 @@ class KeyListener:
 
 
 if __name__ == "__main__":
+    import time
+    x = input('Hello world! Give me some input:  ')
+    print('You said:', x)
     with KeyListener() as kb:
         while True:
-            input = kb.listen_for_key_press()
-            print('Got:', repr(input), ord(input[0]))
+            x = kb.get_key_press(None)
+            print(x, end='  ', flush=True)
+            if x == 'q':
+                print()
+                break
+    x = input('Goodbye world! Give me some input:  ')
+    print('You said:', x)
