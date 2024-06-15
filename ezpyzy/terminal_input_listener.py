@@ -10,7 +10,7 @@ import atexit
 from select import select
 
 
-class KeyListener:
+class TerminalInputListener:
     def __init__(self):
         self.fd = sys.stdin.fileno()
         self.old_terminal = termios.tcgetattr(self.fd)
@@ -97,7 +97,7 @@ if __name__ == "__main__":
     import time
     x = input('Hello world! Give me some input:  ')
     print('You said:', x)
-    with KeyListener() as kb:
+    with TerminalInputListener() as kb:
         while True:
             x = kb.get_key_press(None)
             print(x, end='  ', flush=True)
