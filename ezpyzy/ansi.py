@@ -1,23 +1,22 @@
 
 from __future__ import annotations
 import typing as T
-from collections import deque
-import contextlib as cl
 import sys
 import os
 import re
-if sys.platform == "win32":
+if os.name == 'nt' or sys.platform == "win32":
     import ctypes
     from ctypes import wintypes
 else:
+    import sys
     import termios
-import tty
 
 
 _input_ = sys.stdin
 _output_ = sys.stdout
 
-class CursorRestorePoint:
+
+class CursorLocation:
     def __init__(self, y, x):
         self.y = y
         self.x = x
@@ -32,7 +31,7 @@ class CursorRestorePoint:
     def __str__(self):
         return cursor_to_yx(self.y, self.x)
     def __repr__(self):
-        return f'CursorRestorePoint({self.y}, {self.x})'
+        return f'{self.__class__.__name__}({self.y}, {self.x})'
 
 def cursor_get_yx():
     if sys.platform == "win32":
@@ -52,10 +51,8 @@ def cursor_get_yx():
         reply = ""
         _output_.write("\x1b[6n")
         _output_.flush()
-        while ch := _input_.read(1):
-            reply += ch
-            if ch == "R":
-                break
+        while not (reply := reply + sys.stdin.read(1)).endswith('R'):
+            pass
         res = re.match(r".*\[(?P<y>\d*);(?P<x>\d*)R", reply)
     finally:
         if sys.platform == "win32":
@@ -64,12 +61,12 @@ def cursor_get_yx():
         else:
             termios.tcsetattr(_input_, termios.TCSAFLUSH, OldStdinMode)
     if res:
-        return CursorRestorePoint(int(res.group("y")), int(res.group("x")))
+        return int(res.group("y")), int(res.group("x"))
     else:
         raise ValueError("Could not get cursor position.")
 
 def cursor_save():
-    return CursorRestorePoint(*cursor_get_yx())
+    return CursorLocation(*cursor_get_yx())
 
 def screen_get_size():
     size = os.get_terminal_size(_output_.fileno())
@@ -262,10 +259,9 @@ if __name__ == '__main__':
     print(color(55, 100, 200), end='')
     for i in range(10):
         print('-'*25)
-        pos = cursor_get_yx()
-        print(cursor_to_yx(3, 0), end='')
-        print('Screen size', screen_get_size(), end='     ')
-        print(cursor_to_yx(*pos), end='')
+        with cursor_save():
+            print(cursor_to_yx(3, 0), end='')
+            print('Screen size', screen_get_size(), end='     ')
         time.sleep(0.5)
     print(color('lightgreen'), end='')
     print(cursor_to_yx(6, 5), end='')
