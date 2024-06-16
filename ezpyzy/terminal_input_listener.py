@@ -61,12 +61,8 @@ class TerminalInputListener:
     def reset_terminal(self):
         termios.tcsetattr(self.fd, termios.TCSAFLUSH, self.old_terminal)
 
-    def get_key_press(self, seconds_to_wait:int|None=0):
+    def get_key_press(self, seconds_to_wait:int|None=None):
         if select([sys.stdin], [], [], seconds_to_wait)[0]:
-            return self._handle_key_press()
-
-    def listen_for_key_press(self):
-        if select([sys.stdin], [], [], None)[0]:
             return self._handle_key_press()
 
     def _handle_key_press(self):
@@ -94,12 +90,11 @@ class TerminalInputListener:
 
 
 if __name__ == "__main__":
-    import time
     x = input('Hello world! Give me some input:  ')
     print('You said:', x)
     with TerminalInputListener() as kb:
         while True:
-            x = kb.get_key_press(None)
+            x = kb.get_key_press()
             print(x, end='  ', flush=True)
             if x == 'q':
                 print()
