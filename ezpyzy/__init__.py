@@ -1,7 +1,7 @@
 
 from __future__ import annotations
 
-
+import ezpyzy.ansi as ansi
 from ezpyzy.batch import batching, batched
 from ezpyzy.bind import bind
 from ezpyzy.cat import cat
