@@ -62,12 +62,12 @@ class TerminalInputListener:
         termios.tcsetattr(self.fd, termios.TCSAFLUSH, self.old_terminal)
 
     def get_key_press(self, seconds_to_wait:int|None=0):
-        select([sys.stdin], [], [], seconds_to_wait)[0]
-        return self._handle_key_press()
+        if select([sys.stdin], [], [], seconds_to_wait)[0]:
+            return self._handle_key_press()
 
     def listen_for_key_press(self):
-        select([sys.stdin], [], [], None)[0]
-        return self._handle_key_press()
+        if select([sys.stdin], [], [], None)[0]:
+            return self._handle_key_press()
 
     def _handle_key_press(self):
         char = sys.stdin.read(1)
