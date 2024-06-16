@@ -1,8 +1,6 @@
 
 from __future__ import annotations
 import typing as T
-from collections import deque
-import contextlib as cl
 import sys
 import os
 import re
@@ -13,9 +11,33 @@ else:
     import sys
     import termios
 
+
 _input_ = sys.stdin
 _output_ = sys.stdout
 
+
+grammar = re.compile(r'\033\[[0-9]*[a-zA-Z]')
+
+def parse(ansi_text):
+    start = 0
+    while result := grammar.search(ansi_text, start):
+        yield result.start(), result.end()
+        start = result.end()
+
+def length(ansi_text):
+    all_text_len = len(ansi_text)
+    ansi_text_len = sum((0,
+        *(e-s for s, e in parse(ansi_text))))
+    return all_text_len - ansi_text_len
+
+def strip(ansi_text):
+    no_ansi = []
+    no_ansi_start = 0
+    for start, end in parse(ansi_text):
+        no_ansi.append(ansi_text[no_ansi_start:start])
+        no_ansi_start = end
+    no_ansi.append(ansi_text[no_ansi_start:])
+    return ''.join(no_ansi)
 
 class CursorLocation:
     def __init__(self, y, x):
