@@ -10,6 +10,26 @@ class Printer:
     ...
 
 
+"""
+Animation:
+
+Elements--
+    - string id key for element
+    - relative row
+    - absolute col
+    - animation generator (or None)
+    - update
+
+Chunking--
+    - character by character effects
+    - line by line effects
+    - word by word effects
+    
+Color over time and location 
+
+"""
+
+
 
 if __name__ == '__main__':
     ansi_sentence = f"{an.color('red')}Hello {an.color('green')}this is a {an.reset}test."

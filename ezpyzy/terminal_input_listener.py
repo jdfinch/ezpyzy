@@ -7,15 +7,18 @@ from __future__ import annotations
 import sys
 import termios
 import atexit
+import ezpyzy.ansi as an
 from select import select
 
 
 class TerminalInputListener:
     def __init__(self):
-        self.fd = sys.stdin.fileno()
+        self.fd = sys.stdout.fileno()
         self.old_terminal = termios.tcgetattr(self.fd)
         self.new_terminal = termios.tcgetattr(self.fd)
         self.new_terminal[3] = (self.new_terminal[3] & ~termios.ICANON & ~termios.ECHO)
+        self.new_terminal[6][termios.VMIN] = 0
+        self.new_terminal[6][termios.VTIME] = 0
         termios.tcsetattr(self.fd, termios.TCSAFLUSH, self.new_terminal)
         atexit.register(self.reset_terminal)
         self.chords = {
@@ -88,6 +91,10 @@ class TerminalInputListener:
         else:
             return char
 
+    def get_cursor_yx(self):
+        y, x = an.cursor_get_yx()
+        return y-1, x-1
+
 
 if __name__ == "__main__":
     x = input('Hello world! Give me some input:  ')
@@ -99,5 +106,7 @@ if __name__ == "__main__":
             if x == 'q':
                 print()
                 break
+        y, x = kb.get_cursor_yx()
+        print(f'Cursor at y: {y}, x: {x}')
     x = input('Goodbye world! Give me some input:  ')
     print('You said:', x)
