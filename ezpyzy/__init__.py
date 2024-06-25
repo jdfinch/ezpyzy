@@ -24,7 +24,7 @@ from ezpyzy.short_uuid import short_uuid as uuid
 from ezpyzy.shush import shush
 from ezpyzy.singleton import Singleton, SingletonMeta
 from ezpyzy.subproc import subproc
-from ezpyzy.terminal_input_listener import TerminalInputListener
+from ezpyzy.terminal_input_listener import TerminalEnvironment
 from ezpyzy.timer import Timer
 
 

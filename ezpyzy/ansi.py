@@ -56,44 +56,6 @@ class CursorLocation:
     def __repr__(self):
         return f'{self.__class__.__name__}({self.y}, {self.x})'
 
-def cursor_get_yx():
-    if sys.platform == "win32":
-        OldStdinMode = ctypes.wintypes.DWORD()
-        OldStdoutMode = ctypes.wintypes.DWORD()
-        kernel32 = ctypes.windll.kernel32
-        kernel32.GetConsoleMode(kernel32.GetStdHandle(-10), ctypes.byref(OldStdinMode))
-        kernel32.SetConsoleMode(kernel32.GetStdHandle(-10), 0)
-        kernel32.GetConsoleMode(kernel32.GetStdHandle(-11), ctypes.byref(OldStdoutMode))
-        kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
-    else:
-        OldStdinMode = termios.tcgetattr(_input_)
-        _ = termios.tcgetattr(_input_)
-        _[3] = _[3] & ~(termios.ECHO | termios.ICANON)
-        termios.tcsetattr(_input_, termios.TCSAFLUSH, _)
-    try:
-        reply = ""
-        _output_.write("\x1b[6n")
-        _output_.flush()
-        while not (reply := reply + sys.stdin.read(1)).endswith('R'):
-            pass
-        res = re.match(r".*\[(?P<y>\d*);(?P<x>\d*)R", reply)
-    finally:
-        if sys.platform == "win32":
-            kernel32.SetConsoleMode(kernel32.GetStdHandle(-10), OldStdinMode)  # noqa
-            kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), OldStdoutMode)  # noqa
-        else:
-            termios.tcsetattr(_input_, termios.TCSAFLUSH, OldStdinMode)
-    if res:
-        return int(res.group("y")), int(res.group("x"))
-    else:
-        raise ValueError("Could not get cursor position.")
-
-def cursor_save():
-    return CursorLocation(*cursor_get_yx())
-
-def screen_get_size():
-    size = os.get_terminal_size(_output_.fileno())
-    return size.lines, size.columns
 
 reset = '\033[0m'
 bold = '\033[1m'
@@ -146,16 +108,17 @@ background_rgb: T.Callable[[int, int, int], str] = '\033[48;2;{};{};{}m'.format 
 linewrapping = '\033[7h'
 nolinewrapping = '\033[7l'
 cursor_home = '\033[H'
+cursor_get_yx = '\033[6n'
 cursor_to_yx: T.Callable[[int, int], str] = '\033[{};{}H'.format  # noqa
 cursor_up: T.Callable[[int], str] = '\033[{}A'.format
 cursor_down: T.Callable[[int], str] = '\033[{}B'.format
 cursor_right: T.Callable[[int], str] = '\033[{}C'.format
 cursor_left: T.Callable[[int], str] = '\033[{}D'.format
-cursor_downline: T.Callable[[int], str] = '\033[{}E'.format
-cursor_upline: T.Callable[[int], str] = '\033[{}F'.format
+cursor_down_line: T.Callable[[int], str] = '\033[{}E'.format
+cursor_up_line: T.Callable[[int], str] = '\033[{}F'.format
 cursor_to_x: T.Callable[[int], str] = '\033[{}G'.format
-# cursor_save = '\033[s'
-# cursor_restore = '\033[u'
+cursor_save = '\033[s'
+cursor_restore = '\033[u'
 erase_screen = '\033[2J'
 erase_down = '\033[J'
 erase_up = '\033[1J'
@@ -165,6 +128,26 @@ erase_left = '\033[1K'
 erase_line = '\033[2K'
 cursor_hide = '\033[?25l'
 cursor_show = '\033[?25h'
+screen_save = '\033[?1049h'
+screen_restore = '\033[?1049l'
+get_screen_hw = '\033[18t'
+enable_mouse_tracking = '\033[?1000h'
+disable_mouse_tracking = '\033[?1000l'
+enable_mouse_clicks = '\033[?1002h'
+disable_mouse_clicks = '\033[?1002l'
+enable_mouse_drag = '\033[?1003h'
+disable_mouse_drag = '\033[?1003l'
+enable_mouse_scroll = '\033[?1006h'
+disable_mouse_scroll = '\033[?1006l'
+enable_mouse_focus = '\033[?1004h'
+disable_mouse_focus = '\033[?1004l'
+enable_mouse_utf8 = '\033[?1015h'
+disable_mouse_utf8 = '\033[?1015l'
+enable_mouse_sgr = '\033[?1006h'
+disable_mouse_sgr = '\033[?1006l'
+enable_mouse_urxvt = '\033[?1015h'
+disable_mouse_urxvt = '\033[?1015l'
+
 
 name_to_fg_color = dict(
     black = foreground_black,
@@ -274,18 +257,18 @@ class color:
 
 if __name__ == '__main__':
     import time
-    height, width = screen_get_size()
+    # height, width = screen_get_size()
     longline = 'really long line ' * 20
-    print(longline[:width], end='\r')
+    # print(longline[:width], end='\r')
     print('Hello, World!')
-    print('Screen size', screen_get_size())
+    # print('Screen size', screen_get_size())
     print(color(55, 100, 200), end='')
     for i in range(10):
         print('-'*25)
-        pos = cursor_get_yx()
+        # pos = cursor_get_yx()
         print(cursor_to_yx(3, 0), end='')
-        print('Screen size', screen_get_size(), end='     ')
-        print(cursor_to_yx(*pos), end='')
+        # print('Screen size', screen_get_size(), end='     ')
+        # print(cursor_to_yx(*pos), end='')
         time.sleep(0.5)
     print(color('lightgreen'), end='')
     print(cursor_to_yx(6, 5), end='')
@@ -295,7 +278,7 @@ if __name__ == '__main__':
     print(cursor_to_x(10), '!!!', end='')
     time.sleep(1)
     print(cursor_to_yx(20, 3), end='')
-    print('Cursor location:', cursor_get_yx())
+    # print('Cursor location:', cursor_get_yx())
     print(color('white'), end='')
     print('Goodbye, World!')
 
