@@ -6,6 +6,7 @@ import pathlib as pl
 import sys
 import importlib as imp
 from ezpyzy.digiterate import digiterate
+from ezpyzy.get_import_path import get_import_path
 
 
 prefix = '~@&MW|'
@@ -138,14 +139,7 @@ class PYONDecoder:
 
 
 
-def get_import_path(cls_or_fn):
-    name = cls_or_fn.__name__
-    module = sys.modules[cls_or_fn.__module__]
-    file = module.__file__
-    cwd = pl.Path.cwd()
-    path = pl.Path(file).relative_to(cwd)
-    import_path = '.'.join((*path.parts[:-1], path.stem, name))
-    return import_path
+
 
 def import_from_path(import_path):
     module, name = import_path.rsplit('.', 1)

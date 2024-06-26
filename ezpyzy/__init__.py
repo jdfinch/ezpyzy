@@ -4,6 +4,7 @@ from __future__ import annotations
 import ezpyzy.ansi as ansi
 from ezpyzy.batch import batching, batched
 from ezpyzy.bind import bind
+from ezpyzy.cache import cache
 from ezpyzy.cat import cat
 from ezpyzy.check import check
 from contextlib import nullcontext as collapsable # noqa
@@ -14,6 +15,7 @@ from ezpyzy.digiterate import digiterate
 from ezpyzy.expydite import explore
 from ezpyzy.file import File, filelike
 from ezpyzy.format import Savable, Text, CSV, JSON, Bytes, Pickle, TSV, PYON, formatlike
+from ezpyzy.get_import_path import get_import_path
 from ezpyzy.multiprocess import multiprocess
 from ezpyzy.option import option
 from ezpyzy.settings import settings, update_settings, replace, undefault, Settings # noqa

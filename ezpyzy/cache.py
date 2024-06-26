@@ -1,32 +1,47 @@
-"""
-Todo
-"""
 
 from __future__ import annotations
 
+from ezpyzy.hash import hash
+from ezpyzy.file import File
+from ezpyzy.get_import_path import get_import_path
+
 import inspect as ins
 
-from ezpyzy.hash import hash
-from ezpyzy.pyon import PYONEncoder, PYONDecoder
-from ezpyzy.file import File
+import typing as T
 
 
-def cache(folder='.cache', include_inputs=False):
-    ...
+F = T.TypeVar('F', bound=T.Callable)
+G = T.TypeVar('G', bound=T.Callable)
+
+def cache(fn:F=None, folder='.cache') -> F | T.Callable[[G], G]:
+    if fn is None:
+        return lambda f: cache(f, folder)
+    elif isinstance(fn, str):
+        return lambda f: cache(f, fn)
+    else:
+        fn_full_name = get_import_path(fn)
+        fn_code = ins.getsource(fn)
+        def wrapper(*args, **kwargs):
+            h = ''.join({
+                ' ': '_', '\n': '_', '\t': '_', '\r': '_', '\\': '_', '/': '_', ':': '_',
+                '*': '_', '?': '_', '"': '_', '<': '_', '>': '_', '|': '_',
+            }.get(c, c) for c in hash((fn_full_name, fn_code, args, kwargs)))
+            file = File(f'{folder}/{fn_full_name}_{h}.pkl')
+            if file.path.exists():
+                return file.load()
+            else:
+                result = fn(*args, **kwargs)
+                file.save(result)
+                return result
+        return wrapper
 
 
 if __name__ == '__main__':
 
-    class Foo:
-        def __init__(self, x:int, y: str):
-            self.x = x
-            self.y = y
+    @cache
+    def process_the_thing(x):
+        print('Processing the thing...')
+        return x * 2
 
-        def bar(self, z):
-            print('bar', z, end=', ')
-            print('with', self.x, self.y)
-
-
-    foo = Foo.__new__(Foo)
-    print(foo)
-    foo.bar(3)
+    print(f'{process_the_thing(2) = }')
+    print(f'{process_the_thing(2) = }')
