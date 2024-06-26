@@ -13,7 +13,6 @@ from select import select
 import re
 
 yx_pattern = re.compile(r'\x1b\[(\d+);(\d+)R')
-hw_pattern = re.compile(r'\x1b\[(\d+);(\d+)t')
 
 
 class TerminalEnvironment:

@@ -2,14 +2,7 @@
 from __future__ import annotations
 import typing as T
 import sys
-import os
 import re
-if os.name == 'nt' or sys.platform == "win32":
-    import ctypes
-    from ctypes import wintypes
-else:
-    import sys
-    import termios
 
 
 _input_ = sys.stdin

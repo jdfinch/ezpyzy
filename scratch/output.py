@@ -7,17 +7,16 @@ import atexit as ae
 import time
 
 
-def printing(queue: q.Queue):
-    while True:
-        s = queue.get()
-        if s is None:
-            break
-        for ch in s:
-            print(ch, end='', flush=True)
-            time.sleep(0.2)
+buffer = ['x'] * 100
+
+
+def printing():
+    for ch in buffer:
+        print(ch, end='', flush=True)
+        time.sleep(0.2)
 
 queue = mp.Queue()
-worker = mp.Process(target=printing, args=(queue,), daemon=True)
+worker = th.Thread(target=printing, args=(), daemon=True)
 worker.start()
 
 def cleanup():
@@ -35,19 +34,23 @@ if __name__ == '__main__':
     import random as rng
     from ezpyzy.timer import Timer
 
-    workload = 10**6
+    workload = 10**6 * 5
 
     with Timer('Without output'):
         for i in range(5):
-            print('Hello, World!')
+            print('.', end='', flush=True)
             l = []
             for _ in range(workload):
-                l.append(rng.randint(0, 99))
+                x = rng.randint(0, 99)
+                l.append(x)
+
 
     with Timer('With output'):
-        for i in range (5):
-            output('Hello, World!\n')
+        for i in range(5):
+            print('.', end='', flush=True)
             l = []
             for _ in range(workload):
-                l.append(rng.randint(0, 99))
+                x = rng.randint(0, 99)
+                l.append(x)
+            buffer[x % 100] = chr(32 + x % 10)
     output('\n\nMain thread done!')
