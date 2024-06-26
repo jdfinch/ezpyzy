@@ -14,7 +14,7 @@ print(f'Performance test with {num_groups} groups, {num_cols} columns, and {num_
 with ez.Timer('Creating data'):
     data = [
         [x for _ in range(num_cols)]
-        for x, _ in zip(it.cycle(ez.digiterate(num_groups)), range(num_rows))
+        for x, _ in zip(it.cycle(ez.alphabetical(num_groups)), range(num_rows))
     ]
 
 with ez.Timer('Creating table'):

@@ -2,7 +2,7 @@
 import itertools as it
 
 
-def digiterate(n=None, chars='ABCDEFGHIJKLMNOPQRSTUVWXYZ'):
+def alphabetical(n=None, chars='ABCDEFGHIJKLMNOPQRSTUVWXYZ'):
     for i in it.count():
         if n is not None and i == n:
             return
@@ -16,5 +16,5 @@ def digiterate(n=None, chars='ABCDEFGHIJKLMNOPQRSTUVWXYZ'):
 
 
 if __name__ == '__main__':
-    for i, name in zip(range(100), digiterate("ABCDEFGHIJKLMNOPQRSTUVWXYZ")):
+    for i, name in zip(range(100), alphabetical("ABCDEFGHIJKLMNOPQRSTUVWXYZ")):
         print(name, end=', ')

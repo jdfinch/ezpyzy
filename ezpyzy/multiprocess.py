@@ -12,6 +12,7 @@ from ezpyzy.batch import batched
 J = T.TypeVar('J', bound=T.Iterable)
 R = T.TypeVar('R')
 
+
 def _multiprocess(
     fn:T.Callable[[J], T.Sequence[R]],
     data:J=None,
@@ -139,7 +140,7 @@ if __name__ == '__main__':
         with Timer('Batch multiprocessing'):
             def batch_sum(batch=data):
                 return [int(', '.join([str(x) for x in item]).replace(', ', '')[:100]) for item in batch]
-            results = _multiprocess(batch_sum, n_processes=8, display=False)
+            results = multiprocess(batch_sum, n_processes=8, display=False)
 
         print()
         with Timer('Single process'):

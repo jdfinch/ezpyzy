@@ -11,7 +11,7 @@ from contextlib import nullcontext as collapsable # noqa
 from ezpyzy.debugging import debugging
 from ezpyzy.default import default
 from ezpyzy.denominate import denominate
-from ezpyzy.digiterate import digiterate
+from ezpyzy.digiterate import alphabetical
 from ezpyzy.expydite import explore
 from ezpyzy.file import File, filelike
 from ezpyzy.format import Savable, Text, CSV, JSON, Bytes, Pickle, TSV, PYON, formatlike

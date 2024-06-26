@@ -5,7 +5,7 @@ import json
 import pathlib as pl
 import sys
 import importlib as imp
-from ezpyzy.digiterate import digiterate
+from ezpyzy.digiterate import alphabetical
 from ezpyzy.get_import_path import get_import_path
 
 
@@ -18,7 +18,7 @@ class PYONEncoder:
         super().__init__()
         self.types = {}
         self.ids = {}
-        self.id_generator = iter(digiterate())
+        self.id_generator = iter(alphabetical())
 
     def encode(self, o):
         t = type(o)
