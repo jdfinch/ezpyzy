@@ -17,7 +17,6 @@ from ezpyzy.file import File, filelike
 from ezpyzy.format import Savable, Text, CSV, JSON, Bytes, Pickle, TSV, PYON, formatlike
 from ezpyzy.get_import_path import get_import_path
 from ezpyzy.multiprocess import multiprocess
-from ezpyzy.option import option
 from ezpyzy.settings import settings, update_settings, replace, undefault, Settings # noqa
 from dataclasses import replace as copy # noqa
 from ezpyzy.scope import Scope
