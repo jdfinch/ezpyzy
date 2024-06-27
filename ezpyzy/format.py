@@ -146,40 +146,6 @@ class Pickle(Savable):
         return pickle.dumps(self, *args, **kwargs)
 
 
-class TSV(Savable):
-
-    extensions = ['tsv',]
-
-    @classmethod
-    def deserialize(cls, string):
-        str_io = io.StringIO(string)
-        reader = csv.reader(
-            str_io,
-            delimiter='\t',
-            quotechar='`',
-            doublequote=True,
-            quoting=csv.QUOTE_MINIMAL,
-            skipinitialspace=False,
-            strict=True,
-        )
-        return list(reader)
-
-
-    def serialize(self: ..., *args, **kwargs):
-        str_io = io.StringIO()
-        writer = csv.writer(
-            str_io,
-            delimiter='\t',
-            quotechar='`',
-            doublequote=True,
-            quoting=csv.QUOTE_MINIMAL,
-            skipinitialspace=False,
-            strict=True,
-        )
-        writer.writerows(self)
-        return str_io.getvalue()
-
-
 class Pyr(Savable):
 
     extension = ['pyr']
@@ -194,50 +160,77 @@ class Pyr(Savable):
         return pyon.PyrEncoder().encode(self)
 
 
-    
+class _EmptySetTransformer(ast.NodeTransformer):
+    def visit_Call(self, node):
+        if isinstance(node.func, ast.Name) and node.func.id == 'set' and not node.args:
+            return ast.Set(elts=[], ctx=ast.Load())
+        else:
+            return node
+_empty_set_transformer = _EmptySetTransformer()
+
 class PYON(Savable):
     extension = ['pyon']
 
     @classmethod
     def deserialize(cls, string):
-        return ast.literal_eval(string)
+        tree = ast.parse(string, mode='eval')
+        transformed = _empty_set_transformer.visit(tree)
+        return ast.literal_eval(transformed)
 
     def serialize(self: ..., *args, **kwargs):
-        class EmptySetTransformer(ast.NodeTransformer):
-            def visit_Call(self, node):
-                if isinstance(node.func, ast.Name) and node.func.id == 'set' and not node.args:
-                    return ast.Tuple(elts=[], ctx=ast.Load())
-                return node
-        transformer = EmptySetTransformer()
-        representation = repr(self)
-        tree = ast.parse(representation, mode='eval')
-        transformed = transformer.visit(tree)
-        reobjectified = ast.literal_eval(transformed)
-        reserialized = repr(reobjectified)
-        return reserialized
+        serialized = repr(self)
+        PYON.deserialize(serialized)
+        return serialized
+
+
+_forbidden_raw_chars = set('\n\t')
+
+class PON(Savable):
+    extension = ['pon']
+
+    @classmethod
+    def deserialize(cls, string):
+        try:
+            tree = ast.parse(string, mode='eval')
+            transformed = _empty_set_transformer.visit(tree)
+            return ast.literal_eval(transformed)
+        except SyntaxError:
+            return string
+
+    def serialize(self: ..., *args, **kwargs):
+        if isinstance(self, str) and not set(self) & _forbidden_raw_chars:
+            try:
+                ast.parse(self, mode='eval')
+                transformed = _empty_set_transformer.visit(ast.parse(self, mode='eval'))
+                ast.literal_eval(transformed)
+            except (SyntaxError, ValueError):
+                return self
+        return repr(self)
+
+
+class TSV(Savable):
+
+    extensions = ['tsv',]
+
+    @classmethod
+    def deserialize(cls, string):
+        return [[PON.deserialize(cell) for cell in row.split('\t')] for row in string.split('\n') if row]
+
+    def serialize(self: ..., *args, **kwargs):
+        return '\n'.join('\t'.join(PON.serialize(cell) for cell in row) for row in self)
 
 
 
 if __name__ == '__main__':
 
-    rows = [
-        [1, 2, 'z', set(), None],
-        [None, 4.0, 'This\tis a\nTEST!', {3, 4, ()}, ""],
-        [-5.32, -6, 'x', [3,3,True, {'a': {}, 'b': set()},], False],
-    ]
+    def main():
 
-    serialized = TSV.serialize(rows)
-    print(serialized)
-    deserialized = TSV.deserialize(serialized)
-    for row in deserialized:
-        print()
-        for element in row:
-            print(f'{element} ({type(element).__name__})', end=', ')
-    print('\n\n')
-    with open('test.tsv', 'w') as file:
-        file.write(serialized)
-    with open('test.tsv', 'r') as file:
-        print(file.read())
+        x = [1, 2, set(), {3: 'hello world'}, {4, 5, None}]
 
+        serialized = PYON.serialize(x)
+        print(f'{type(serialized).__name__} {serialized = }')
+        deserialized = PYON.deserialize(serialized)
+        print('\n\n')
+        print(f'{type(deserialized).__name__} {deserialized = }')
 
-
+    main()
