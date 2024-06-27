@@ -1,11 +1,11 @@
 
 from __future__ import annotations
 
-from ezpyzy.format import PYON
+from ezpyzy.format import Pyr
 import dataclasses as dc
 
 @dc.dataclass
-class Foo(PYON):
+class Foo(Pyr):
     x: int
     y: str
     z: Foo = None

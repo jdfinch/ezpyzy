@@ -13,7 +13,7 @@ prefix = '~@&MW|'
 suffix = '|WM&@~'
 
 
-class PYONEncoder:
+class PyrEncoder:
     def __init__(self,): # todo: add compatibility layer to allow unsupported types
         super().__init__()
         self.types = {}
@@ -68,7 +68,7 @@ class PYONEncoder:
         ))
 
 
-class PYONDecoder:
+class PyrDecoder:
     def __init__(self): # todo: add compatibility layer to allow unsupported types
         super().__init__()
         self.swizz = {}

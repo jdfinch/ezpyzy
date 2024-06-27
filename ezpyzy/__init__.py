@@ -14,7 +14,7 @@ from ezpyzy.denominate import denominate
 from ezpyzy.digiterate import alphabetical
 from ezpyzy.expydite import explore
 from ezpyzy.file import File, filelike
-from ezpyzy.format import Savable, Text, CSV, JSON, Bytes, Pickle, TSV, PYON, formatlike
+from ezpyzy.format import Savable, Text, CSV, JSON, Bytes, Pickle, TSV, Pyr, formatlike
 from ezpyzy.get_import_path import get_import_path
 from ezpyzy.multiprocess import multiprocess
 from ezpyzy.settings import settings, update_settings, replace, undefault, Settings # noqa

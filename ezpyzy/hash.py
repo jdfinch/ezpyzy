@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib as hl
 import base64 as b64
 
-import ezpyzy.pyon as pyon
+import ezpyzy.pyr as pyon
 
 
 def hash(o):
@@ -13,7 +13,7 @@ def hash(o):
     elif isinstance(o, bytes):
         s = o
     else:
-        s = pyon.PYONEncoder().encode(o).encode()
+        s = pyon.PyrEncoder().encode(o).encode()
     sha = hl.sha256(s).digest()
     ascii = b64.standard_b64encode(sha).decode('ascii')
     return ascii

@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import abc
+import ast
 import io
 import json
 import csv
 import pickle
 import ezpyzy.file
-import ezpyzy.pyon as pyon
+import ezpyzy.pyr as pyon
 import typing as T
 
 
@@ -179,17 +180,64 @@ class TSV(Savable):
         return str_io.getvalue()
 
 
-class PYON(Savable):
+class Pyr(Savable):
 
+    extension = ['pyr']
+
+    @classmethod
+    def deserialize(cls, string):
+        obj = pyon.PyrDecoder().decode(string)
+        assert isinstance(obj, cls), f"Pyr object is not of the expected type: {cls}"
+        return obj
+
+    def serialize(self: ..., *args, **kwargs):
+        return pyon.PyrEncoder().encode(self)
+
+
+    
+class PYON(Savable):
     extension = ['pyon']
 
     @classmethod
     def deserialize(cls, string):
-        obj = pyon.PYONDecoder().decode(string)
-        assert isinstance(obj, cls), f"PYON object is not of the expected type: {cls}"
-        return obj
+        return ast.literal_eval(string)
 
     def serialize(self: ..., *args, **kwargs):
-        return pyon.PYONEncoder().encode(self)
+        class EmptySetTransformer(ast.NodeTransformer):
+            def visit_Call(self, node):
+                if isinstance(node.func, ast.Name) and node.func.id == 'set' and not node.args:
+                    return ast.Tuple(elts=[], ctx=ast.Load())
+                return node
+        transformer = EmptySetTransformer()
+        representation = repr(self)
+        tree = ast.parse(representation, mode='eval')
+        transformed = transformer.visit(tree)
+        reobjectified = ast.literal_eval(transformed)
+        reserialized = repr(reobjectified)
+        return reserialized
+
+
+
+if __name__ == '__main__':
+
+    rows = [
+        [1, 2, 'z', set(), None],
+        [None, 4.0, 'This\tis a\nTEST!', {3, 4, ()}, ""],
+        [-5.32, -6, 'x', [3,3,True, {'a': {}, 'b': set()},], False],
+    ]
+
+    serialized = TSV.serialize(rows)
+    print(serialized)
+    deserialized = TSV.deserialize(serialized)
+    for row in deserialized:
+        print()
+        for element in row:
+            print(f'{element} ({type(element).__name__})', end=', ')
+    print('\n\n')
+    with open('test.tsv', 'w') as file:
+        file.write(serialized)
+    with open('test.tsv', 'r') as file:
+        print(file.read())
+
 
 
