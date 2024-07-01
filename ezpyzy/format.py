@@ -194,7 +194,7 @@ class PON(Savable):
             tree = ast.parse(string, mode='eval')
             transformed = _empty_set_transformer.visit(tree)
             return ast.literal_eval(transformed)
-        except SyntaxError:
+        except Exception:
             return string
 
     def serialize(self: ..., *args, **kwargs):
@@ -225,12 +225,22 @@ if __name__ == '__main__':
 
     def main():
 
-        x = [1, 2, set(), {3: 'hello world'}, {4, 5, None}]
+        table = [
+            ['Column A', 'colB', 'C.o.l, C', 'Col\tD'],
+            ['abc', None, 5, 'This is a test.'],
+            ['X\tY', 'W\nZ', 'True', True],
+            ['!!!', -9.21, 8e12, [1, 2, 3]],
+            [set(), ('a', 'b',), {}, {1: {'a', 'b'}, 2: (), 3: [1, 2]}]
+        ]
 
-        serialized = PYON.serialize(x)
+        serialized = TSV.serialize(table)
         print(f'{type(serialized).__name__} {serialized = }')
-        deserialized = PYON.deserialize(serialized)
+        with open('test.tsv', 'w') as f:
+            f.write(serialized)
+        deserialized = TSV.deserialize(serialized)
         print('\n\n')
         print(f'{type(deserialized).__name__} {deserialized = }')
+        print('\n\n')
+        print(f'{type(deserialized[4][3][1]).__name__ = }')
 
     main()
