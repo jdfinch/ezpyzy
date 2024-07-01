@@ -11,18 +11,16 @@ float_grammar = '(?P<float>' + '|'.join('(?:' + x + ')' for x in [
 int_grammar = '(?P<int>' + '|'.join('(?:' + x + ')' for x in [
     r'''[+-]?\d+''',
 ]) + ')'
-bool_grammar = '(?P<bool>' + '|'.join('(?:' + x + ')' for x in [
+literal_grammar = '(?P<bool>' + '|'.join('(?:' + x + ')' for x in [
     r'''True''',
     r'''False''',
-]) + ')'
-none_grammar = '(?P<none>' + '|'.join('(?:' + x + ')' for x in [
-    r'''None''',
+    r'''None'''
 ]) + ')'
 str_grammar = '(?P<str>' + '|'.join('(?:' + x + ')' for x in [
     r'''"(?:[^"]|\\")*"(?!")''',
-    r'''\'(?:[^\']|\\\')*\'(?!')''',
-    r'''r"(?:[^"]|\\")*"(?!")''',
+    r'''\'(?:[^\']|\\\')*\'(?!')'''
 ]) + ')'
+
 
 tick_parser = re.compile(r'`((?:[^`]|``)*)`(?!`)')
 
