@@ -512,7 +512,7 @@ class Table:
         a_cols = list(a())
         a_rows = list(zip(*a()))
         left = {}
-        for index, *on in zip(self().index, *self()):
+        for index, *on in zip(self().i, *self()):
             left.setdefault(tuple(on), []).append(index)
         b_cols = [col for col in b() if not any(col.base() is c.base() for c in other())]
         b_rows = list(zip(*b_cols))

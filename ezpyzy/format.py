@@ -241,7 +241,7 @@ if __name__ == '__main__':
         return big_parse
 
 
-    def get_tree(s):
+    def pon_parse(s):
         rows = [[]]
         stack = [['', []]]
         lastchar = ''
@@ -475,7 +475,7 @@ if __name__ == '__main__':
                 else:
                     stack.append(['text', [ch]])
             lastchar = ch
-
+        return rows
 
 
 
@@ -487,13 +487,15 @@ if __name__ == '__main__':
             ['X\tY', 'W\nZ', 'True', True],
             ['!!!', -9.21, 8e12, [1, 2, 3]],
             [set(), ('a', 'b',), {}, {1: {'a', 'b'}, 2: (), 3: [1, 2]}]
-        ] * int(10e4)
+        ] * int(1)
 
         serialized = TSV.serialize(table)
         # print(f'{type(serialized).__name__} {serialized = }')
 
         with Timer('Fast custom parser...'):
-            get_tree(serialized)
+            rows = pon_parse(serialized)
+
+        print('hello')
 
         with Timer('Deserializing PON...'):
             deserialized = TSV.deserialize(serialized)

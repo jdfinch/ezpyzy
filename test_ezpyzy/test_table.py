@@ -611,7 +611,7 @@ def test_sequential_joins():
         foo=['foo', 'bar', 'baz']
     ))
     join_1 = dialogues.id << turns.dialogue
-    join_2 = join_1.index << extra_info.idx
+    join_2 = join_1.i << extra_info.idx
     assert list(join_2().column_names) == [
         'id', 'sys', 'text', 'speaker', 'index', 'foo'
     ]
