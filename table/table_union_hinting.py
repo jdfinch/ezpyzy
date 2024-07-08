@@ -13,7 +13,6 @@ class Column(T.Generic[ColumnCellType, ColumnTableType]):
         self.__table__: ColumnTableType = tab
         self.__attrs__ = ColumnAttrs(self)
         self.__name__ = name
-        self.__serial__ = ...  # (encoder, decoder)
 
     def __iter__(self) -> T.Iterator[ColumnCellType]:
         ...

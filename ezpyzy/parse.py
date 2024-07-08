@@ -1,3 +1,14 @@
+"""
+Parser generator using a backtracking recursive descent algorithm.
+
+Todo:
+    1) Grammar specification API
+    2) Tree transformer
+    3) Inherit-and-init-based API with tree transformer included after parse as parse.tree
+    4) Automatic regular expression group inclusion in tree
+"""
+
+
 
 from __future__ import annotations
 
