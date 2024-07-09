@@ -12,7 +12,7 @@ OtherColumnTableType = T.TypeVar('OtherColumnTableType')
 OtherColumnTableRowType = T.TypeVar('OtherColumnTableRowType')
 
 class Column(T.Generic[ColumnCellType, ColumnTableType]):
-    def __init__(self, name=None, tab:Table[ColumnTableRowType]=None):
+    def __init__(self, name=None, tab:ColumnTableType=None):
         self.__table__: ColumnTableType = tab
         self.__attrs__ = ColumnAttrs(self)
         self.__name__ = name
@@ -45,22 +45,20 @@ class ColumnAttrs(T.Generic[ColumnAttrsType]):
 
 TableRowType = T.TypeVar('TableRowType')
 
-class Table(T.Generic[TableRowType]):
-    def __init__(self, *rows: T.Iterable[TableRowType], cols=None, file=None):
+class Table:
+    def __init__(self, *rows: T.Iterable[T.Self], cols=None, file=None):
         self.__attrs__ = TableAttrs[T.Self](self, cols)
-        self.__rows__: list[TableRowType] = ...
-        self._: Table[TableRowType] | TableRowType = self
+        self.__rows__: list[T.Self] = ...
 
     def __call__(self):
         return self.__attrs__
 
-    def __iter__(self) -> T.Iterator[TableRowType]:
+    def __iter__(self) -> T.Iterator[T.Self]:
         ...
 
-    def __getitem__(self, item) -> Table[TableRowType] | TableRowType:
+    def __getitem__(self, item) -> T.Self:
         """Select"""
-        if isinstance(item, (int, slice)):
-            return Table(self.__rows__[item], cols=self.__attrs__.cols)
+        return self
 
 
 TableAttrsType  = T.TypeVar('TableAttrsType')
@@ -99,18 +97,19 @@ def search_type_annotation(annotation):
 
 CellType = T.TypeVar('CellType')
 RowType = T.TypeVar('RowType')
-Col = T.Union[Column[CellType, Table[RowType]], CellType, None]
+Col = T.Union[Column[CellType, RowType], CellType, None]
 
 class RowMeta(type):
     def __new__(mcs, name, bases, attrs):
+        bases = tuple(base for base in bases if base is not Table)
         cls = super().__new__(mcs, name, bases, attrs)
         for field, element_type in inspect_row_layout(cls):
             ...
         return cls
 
-class Row(metaclass=RowMeta):
+class Row(Table, metaclass=RowMeta):
     @classmethod
-    def s(cls) -> Table[T.Self] | T.Self:
+    def s(cls) -> T.Self:
         return Table()
 
 
@@ -141,9 +140,10 @@ if __name__ == '__main__':
 
         a_duck = ducks[2]
 
-        some_ducks = ducks[1:4]._
+        some_ducks = ducks.__getitem__(slice(1, 4))
         duck_attrs = ducks[:,3]
         more_ducks = ducks[:,:]
+        specific_ducks = ducks[all, 3, 2]
         duck_column = ducks[ducks.name]
 
         second_col = ducks()[1:2]
@@ -151,6 +151,7 @@ if __name__ == '__main__':
         names = ducks.name
         ages = ducks.age
         names_and_ages = names - ages
+        names_of_naa = names_and_ages.name
 
         
     main()
