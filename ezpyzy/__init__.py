@@ -28,6 +28,8 @@ from ezpyzy.subproc import subproc
 from ezpyzy.terminal_environment import TerminalEnvironment
 from ezpyzy.timer import Timer
 
+from ezpyzy.table import Table, Row, Column, Col
+
 
 try:
     from ezpyzy.fixture_group import fixture_group
