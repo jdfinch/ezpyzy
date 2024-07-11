@@ -39,12 +39,18 @@ class Check:
             print()
             captured = self.capture_stdout.getvalue()
             if captured:
-                print(tw.indent(captured, '    '))
+                wrapper = tw.TextWrapper(width=self.width - 3, subsequent_indent='  ', replace_whitespace=False)
+                wrapped = '\n'.join(wrapper.fill(line) for line in captured.split('\n'))
+                indented = tw.indent(wrapped, '  ')
+                print(indented)
         if exc_type is not None:
             if self.show:
                 print(ansi.foreground_red, end='')
                 error_message = tb.format_exc()
-                print(tw.indent(error_message, '    '))
+                wrapper = tw.TextWrapper(width=self.width - 3, subsequent_indent='  ', replace_whitespace=False)
+                wrapped = '\n'.join(wrapper.fill(line) for line in error_message.split('\n'))
+                indented = tw.indent(wrapped, '  ')
+                print(indented)
                 print(ansi.reset, end='')
             print(f"  {ansi.foreground_red}✗{ansi.reset} {time}",) # (self.width - len(time) - 6) * '=')
         else:
