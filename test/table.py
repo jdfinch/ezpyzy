@@ -6,7 +6,7 @@ import ezpyzy as ez
 import dataclasses as dc
 
 
-with ez.check('Define'):
+with ez.test('Define'):
 
     @dc.dataclass
     class Turn(ez.Row):
@@ -20,5 +20,19 @@ with ez.check('Define'):
     print(f'{Turn.__cols__ = }')
 
 
-with ez.check('Construct'):
-    ...
+with ez.test('Construct'):
+
+    turn = Turn('Hello!', 2, 'd', {'a', 'b'}, 'xa')
+    print(f'{turn = }')
+
+    turns = Turn.s((
+        Turn('Hello', 0, 'd', {'a', 'b'}, 'xa'),
+        Turn('world!', 1, 'd', {'c', 'd'}, 'xb'),
+    ))
+
+    ez.check(turns.text, "text['Hello', 'world!']")
+
+
+
+
+

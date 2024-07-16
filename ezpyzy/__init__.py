@@ -7,6 +7,7 @@ from ezpyzy.bind import bind
 from ezpyzy.cache import cache
 from ezpyzy.cat import cat
 from ezpyzy.check import check
+from ezpyzy.test import test
 from contextlib import nullcontext as collapsable # noqa
 from ezpyzy.debugging import debugging
 from ezpyzy.default import default

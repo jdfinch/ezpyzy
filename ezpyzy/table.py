@@ -14,6 +14,9 @@ OtherColumnTableType = T.TypeVar('OtherColumnTableType')
 class Column(T.Generic[ColumnCellType, ColumnTableType]):
 
     def __init__(self, name=None, tab:ColumnTableType=None):
+        if tab is None:
+            tab = Table()
+            tab().cols[name] = self
         self.__table__: ColumnTableType = tab
         self.__attrs__ = ColumnAttrs(self)
         self.__name__ = name
@@ -26,9 +29,9 @@ class Column(T.Generic[ColumnCellType, ColumnTableType]):
 
     def __repr__(self):
         if len(self) > 4:
-            return f"Col({', '.join(repr(x) for x in self[:2])}, ..., {repr(self[-1])})"
+            return f"{self.__name__}[{', '.join(repr(x) for x in self[:2])}, ..., {repr(self[-1])}]"
         else:
-            return f"Col({', '.join(repr(x) for x in self)})"
+            return f"{self.__name__}[{', '.join(repr(x) for x in self)}]"
 
     def __iter__(self) -> T.Iterator[ColumnCellType]:
         return iter(getattr(row, self.__name__) for row in self.__table__.__rows__)
@@ -61,7 +64,7 @@ class ColumnAttrs(T.Generic[ColumnAttrsType]):
 
 class Table:
     def __init__(self, *rows: T.Iterable[T.Self], cols=None, file=None):
-        self.__attrs__ = TableAttrs[T.Self](self, cols)
+        self.__attrs__: TableAttrs[T.Self] = TableAttrs(self, cols)
         self.__rows__: list[T.Self] = list(row for rows_ in rows for row in rows_)
         self.__getitem_hook__ = None
         self.__getitems_hook__ = None
@@ -259,13 +262,12 @@ def inspect_row_layout(cls) -> dict[str, Column]:
         field_type_str = col_type_parser.findall(str(field_type))
         if field_type_str:
             fields[field_name] = Column(field_name)
-            break
     return fields
 
 class Row(Table, metaclass=RowMeta):
     @classmethod
-    def s(cls) -> T.Self:
-        return Table(cols=cls.__cols__)
+    def s(cls, *rows, file=None) -> T.Self:
+        return Table(*rows, cols=cls.__cols__, file=file)
 
 
 ''' ============================== Usage ============================== '''
