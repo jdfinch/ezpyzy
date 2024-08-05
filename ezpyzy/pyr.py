@@ -5,7 +5,8 @@ import json
 import pathlib as pl
 import sys
 import importlib as imp
-from ezpyzy.digiterate import alphabetical
+import itertools as it
+from ezpyzy.alphanumeral import alphanumeral
 from ezpyzy.get_import_path import get_import_path
 
 
@@ -18,7 +19,7 @@ class PyrEncoder:
         super().__init__()
         self.types = {}
         self.ids = {}
-        self.id_generator = iter(alphabetical())
+        self.id_generator = iter(alphanumeral(i) for i in it.count())
 
     def encode(self, o):
         t = type(o)
@@ -132,7 +133,7 @@ class PyrDecoder:
         else:
             o = t
         self.swizz[i] = o
-        o.__dict__.update((k, (v if isinstance(v, (int, float, bool, type(None))) else (
+        o.__dict__.update((k, (v if isinstance(v, (int, float, bool, type(None))) else (  # noqa
             self.swizz.get(v, v) if isinstance(v, str) else self._decode_obj(v)
         ))) for k, v in data)
         return o

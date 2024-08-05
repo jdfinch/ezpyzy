@@ -4,6 +4,10 @@ import typing as T
 
 import copy as cp
 import re
+import itertools as it
+
+from ezpyzy.alphanumeral import alphanumeral
+
 
 ''' ============================== Column ============================== '''
 
@@ -13,25 +17,40 @@ OtherColumnTableType = T.TypeVar('OtherColumnTableType')
 
 class Column(T.Generic[ColumnCellType, ColumnTableType]):
 
-    def __init__(self, name=None, tab:ColumnTableType=None):
-        if tab is None:
-            tab = Table()
-            tab().cols[name] = self
-        self.__table__: ColumnTableType = tab
+    def __init__(self, items=None, name=None, _table:ColumnTableType=None):
         self.__attrs__ = ColumnAttrs(self)
-        self.__name__ = name
+        if name is not None:
+            self.__name__ = name
+        elif isinstance(items, Column):
+            self.__name__ = items.__name__
+        else:
+            self.__name__ = alphanumeral(len(_table()) if _table is not None else 0)
+        if _table is None:
+            self.__table__ = Table(cols=[self])
+        else:
+            self.__table__: ColumnTableType = _table
+        if items is not None:
+            self += items
+            # todo: maybe number of rows is validated when manipulating columns, but number/format of columns is not validated when manipulating rows
 
     def __call__(self):
         return self.__attrs__
 
-    def __str__(self):
-        return self.__name__
+    def __eq__(self, other):
+        if len(self) != len(other):
+            return False
+        for self_item, other_item in zip(self, other):
+            if self_item != other_item:
+                return False
+        return True
 
-    def __repr__(self):
-        if len(self) > 4:
-            return f"{self.__name__}[{', '.join(repr(x) for x in self[:2])}, ..., {repr(self[-1])}]"
+    def __str__(self):
+        max_items = 5
+        if len(self) > max_items:
+            return f"{self.__name__}[{', '.join(repr(x) for x in self[:max_items-2])}, ..., {repr(self[-1])}]"
         else:
             return f"{self.__name__}[{', '.join(repr(x) for x in self)}]"
+    __repr__ = __str__
 
     def __iter__(self) -> T.Iterator[ColumnCellType]:
         return iter(getattr(row, self.__name__) for row in self.__table__.__rows__)
@@ -42,11 +61,38 @@ class Column(T.Generic[ColumnCellType, ColumnTableType]):
     def __getitem__(self, item):
         return getattr(self.__table__[item], self.__name__)
 
-    def __sub__(
-        self: Column[ColumnCellType, ColumnTableType],
-        other: Column[T.Any, OtherColumnTableType]
-    ) -> ColumnTableType | OtherColumnTableType:
-        ...
+    def __iadd__(self, other):
+        """Cat"""
+        assert len(self.__table__()) <= 1, \
+            f"Concatenating to column {self} forbidden because it belongs to {self.__table__} of multiple columns"
+
+
+    def __isub__(self, other):
+        """Merge (into table)"""
+
+    def __imul__(self, other):
+        """Apply"""
+
+    def __itruediv__(self, other):
+        """Group"""
+
+    def __ixor__(self, other):
+        """Sort"""
+
+    def __iand__(self, other):
+        """Inner Join"""
+
+    def __ior__(self, other):
+        """Outer Join"""
+
+    def __ilshift__(self, other):
+        """Left Join"""
+
+    def __irshift__(self, other):
+        """Right Join"""
+
+    def __imatmul__(self, other):
+        """Cartesian Product"""
 
 
 ColumnAttrsType = T.TypeVar('ColumnAttrsType', bound=Column)
@@ -59,6 +105,10 @@ class ColumnAttrs(T.Generic[ColumnAttrsType]):
     def table(self):
         return self.col.__table__
 
+    @property
+    def name(self):
+        return self.col.__name__
+
 
 ''' ============================== Table ============================== '''
 
@@ -66,12 +116,32 @@ class Table:
     def __init__(self, *rows: T.Iterable[T.Self], cols=None, file=None):
         self.__attrs__: TableAttrs[T.Self] = TableAttrs(self, cols)
         self.__rows__: list[T.Self] = list(row for rows_ in rows for row in rows_)
+        if isinstance(cols, Table):
+            cols = {col.__name__: col for col in cols()}
+        elif cols is None:
+            cols = {}
+        elif not isinstance(cols, dict):
+            cols = {col.__name__: col for col in cols}
+        cols = {col_name: cp.copy(col) for col_name, col in cols.items()}
+        for col in cols.values():
+            col.__table__ = self
+        self.__dict__.update(cols)
         self.__getitem_hook__ = None
         self.__getitems_hook__ = None
         self.__contains_hook__ = None
 
     def __call__(self):
         return self.__attrs__
+
+    def __eq__(self, other: Table):
+        self_cols = [col.__name__ for col in self()]
+        other_cols = [col.__name__ for col in other()]
+        if self_cols != other_cols:
+            return False
+        for self_col, other_col in zip(self_cols, other_cols):
+            if self_col != other_col:
+                return False
+        return True
 
     def __iter__(self) -> T.Iterator[T.Self]:
         return iter(self.__rows__)
@@ -81,14 +151,16 @@ class Table:
 
     def __contains__(self, item):
         if isinstance(item, Column):
-            return item in self.__attrs__.cols.values()
+            return item in self.__dict__.values()
         else:
             return self.__contains_hook__(item)
 
     def __getitem__(self, item) -> T.Self:
         """Select"""
-        if isinstance(item, (int, slice)):
-            return Table(self.__rows__[item], cols=self.__attrs__.cols)
+        if isinstance(item, int):
+            return  self.__rows__[item]
+        elif isinstance(item, slice):
+            return Table(self.__rows__[item], cols=self)
         elif isinstance(item, tuple):
             if not item:
                 column_view = Table(cols={})
@@ -111,9 +183,9 @@ class Table:
                     return Table((row[col_selector] for row in rows_view), cols=rows_view.__attrs__.cols)
         elif isinstance(item, list):
             if not item:
-                return Table(cols=self.__attrs__.cols)
+                return Table(cols=self)
             elif isinstance(item[0], int):
-                return Table((self.__rows__[i] for i in item), cols=self.__attrs__.cols)
+                return Table((self.__rows__[i] for i in item), cols=self)
             elif isinstance(item[0], bool):
                 assert len(item) == len(self.__rows__), f"Boolean selector must be the same length as the table."
                 return Table(
@@ -221,20 +293,17 @@ TableAttrsType  = T.TypeVar('TableAttrsType')
 class TableAttrs(T.Generic[TableAttrsType]):
     def __init__(self, tab: TableAttrsType, cols=None):
         self.tab: TableAttrsType = tab
-        self.cols: dict[str, Column[T.Any, TableAttrsType]] = {
-            col_name: cp.copy(col) for col_name, col in cols.items()
-        } if cols else {}
-        for col in self.cols.values():
-            col.__table__ = self.tab
 
     def __iter__(self) -> T.Iterator[Column[T.Any, TableAttrsType]]:
-        return iter(self.cols.values())
+        return iter(col for col in self.tab.__dict__.values() if isinstance(col, Column))
 
     def __contains__(self, item: str | Column):
         if isinstance(item, str):
-            return item in self.cols
+            return item in self.tab.__dict__
+        elif isinstance(item, Column):
+            return item in self.tab.__dict__.values()
         else:
-            return item in self.cols.values()
+            return False
 
     def save(self):
         ...
@@ -261,7 +330,7 @@ def inspect_row_layout(cls) -> dict[str, Column]:
     for field_name, field_type in getattr(cls, '__annotations__', {}).items():
         field_type_str = col_type_parser.findall(str(field_type))
         if field_type_str:
-            fields[field_name] = Column(field_name)
+            fields[field_name] = Column(name=field_name)
     return fields
 
 class Row(Table, metaclass=RowMeta):

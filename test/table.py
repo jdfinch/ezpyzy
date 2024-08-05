@@ -6,7 +6,7 @@ import ezpyzy as ez
 import dataclasses as dc
 
 
-with ez.test('Define'):
+with ez.test('define'):
 
     @dc.dataclass
     class Turn(ez.Row):
@@ -18,21 +18,83 @@ with ez.test('Define'):
 
     print(f'{Turn = }')
     print(f'{Turn.__cols__ = }')
+    assert list(Turn.__cols__) == ['text', 'index', 'dial', 'doms', 'id']
 
 
-with ez.test('Construct'):
-
-    turn = Turn('Hello!', 2, 'd', {'a', 'b'}, 'xa')
-    print(f'{turn = }')
-
+with ez.test('construct table'):
     turns = Turn.s((
-        Turn('Hello', 0, 'd', {'a', 'b'}, 'xa'),
-        Turn('world!', 1, 'd', {'c', 'd'}, 'xb'),
+        turn_0 := Turn('Hello', 0, 'd', {'a', 'b'}, 'xa'),
+        turn_1 := Turn('world!', 1, 'd', {'c', 'd'}, 'xb'),
+        turn_2 := Turn('Goodbye', 2, 'd', {'e', 'f'}, 'xc'),
+        turn_3 := Turn('!!!!!!!!', 3, 'd', {'a', 'd'}, 'xd'),
     ))
 
-    ez.check(turns.text, "text['Hello', 'world!']")
+    print(f'{turns = }')
+    print(f'{turns.text = }')
+    assert list(turns.text) == ['Hello', 'world!', 'Goodbye', '!!!!!!!!']
 
 
+with ez.test('iterate over rows'):
+    expected_ids = ['xa', 'xb', 'xc', 'xd']
+    for turn, expected_id in zip(turns, expected_ids):
+        assert expected_id == turn.id
+
+
+with ez.test('construct column'):
+    column = ez.Column(name='numbers')
+
+
+with ez.test('table equality'):
+    other = Turn.s((
+        other_0 := Turn('Hello', 0, 'd', {'a', 'b'}, 'xa'),
+        other_1 := Turn('world!', 1, 'd', {'c', 'd'}, 'xb'),
+        other_2 := Turn('Goodbye', 2, 'd', {'e', 'a'}, 'xc'),
+        other_3 := Turn('!!!!!!!!', 3, 'd', {'a', 'd'}, 'xd'),
+    ))
+    assert turns == other
+
+
+with ez.test('select a row'):
+    print(f'{turns[0] = }')
+    assert turns[0] is turn_0
+    print(f'{turns[1] = }')
+    assert turns[1] is turn_1
+
+
+with ez.test('select a slice of rows'):
+    print(f'{turns[1:] = }')
+    assert turns[1:] == Turn.s((turn_1, turn_2))
+    print(f'{turns[:2] = }')
+    assert turns[:2] == Turn.s((turn_0, turn_1))
+
+
+with ez.test('select rows by index'):
+    print(f'{turns[[0, 2, 3]].id = }')
+    assert list(turns[[0, 2, 3]].id) == ['xa', 'xc', 'xd']
+
+
+with ez.test('select rows by mask'):
+    ...
+
+
+with ez.test('select rows by set membership'):
+    ...
+
+
+with ez.test('select rows by predicate'):
+    ...
+
+
+with ez.test('select rows by index function'):
+    ...
+
+
+with ez.test('select columns'):
+    ...
+
+
+with ez.test('select rows and columns'):
+    ...
 
 
 
