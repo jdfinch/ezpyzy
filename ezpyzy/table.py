@@ -4,7 +4,6 @@ import typing as T
 
 import copy as cp
 import re
-import itertools as it
 
 from ezpyzy.alphanumeral import alphanumeral
 
@@ -31,7 +30,6 @@ class Column(T.Generic[ColumnCellType, ColumnTableType]):
             self.__table__: ColumnTableType = _table
         if items is not None:
             self += items
-            # todo: maybe number of rows is validated when manipulating columns, but number/format of columns is not validated when manipulating rows
 
     def __call__(self):
         return self.__attrs__
@@ -208,7 +206,7 @@ class Table:
     def __setitem__(self, item, value):
         """Insert"""
         if isinstance(item, (int, slice)):
-            return Table(self.__rows__[item], cols=self.__attrs__.cols)
+            return Table(self.__rows__[item], cols=self)
         elif isinstance(item, tuple):
             if not item:
                 column_view = Table(cols={})
@@ -259,6 +257,7 @@ class Table:
 
     def __iadd__(self, other):
         """Cat"""
+        self.__rows__.extend(other)
 
     def __isub__(self, other):
         """Merge"""

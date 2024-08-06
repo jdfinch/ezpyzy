@@ -15,8 +15,8 @@ from dataclasses import dataclass as settings
 import functools
 import inspect
 import contextlib
-import sys
 import typing as T
+
 
 F1 = T.TypeVar('F1')
 def update_settings(fn:F1) -> F1:
