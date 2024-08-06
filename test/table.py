@@ -28,7 +28,6 @@ with ez.test('construct table'):
         turn_2 := Turn('Goodbye', 2, 'd', {'e', 'f'}, 'xc'),
         turn_3 := Turn('!!!!!!!!', 3, 'd', {'a', 'd'}, 'xd'),
     ))
-
     print(f'{turns = }')
     print(f'{turns.text = }')
     assert list(turns.text) == ['Hello', 'world!', 'Goodbye', '!!!!!!!!']
@@ -41,7 +40,9 @@ with ez.test('iterate over rows'):
 
 
 with ez.test('construct column'):
-    column = ez.Column(name='numbers')
+    column = ez.Column([1, 2, 3, 6], name='numbers')
+    assert list(column) == [1, 2, 3, 6]
+    assert column().table.numbers is column
 
 
 with ez.test('table equality'):

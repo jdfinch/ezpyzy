@@ -16,20 +16,21 @@ OtherColumnTableType = T.TypeVar('OtherColumnTableType')
 
 class Column(T.Generic[ColumnCellType, ColumnTableType]):
 
-    def __init__(self, items=None, name=None, _table:ColumnTableType=None):
+    def __init__(self, *items, name=None, _table:ColumnTableType=None):
         self.__attrs__ = ColumnAttrs(self)
         if name is not None:
             self.__name__ = name
-        elif isinstance(items, Column):
-            self.__name__ = items.__name__
+        elif items and isinstance(items[0], Column):
+            self.__name__ = items[0].__name__
         else:
             self.__name__ = alphanumeral(len(_table()) if _table is not None else 0)
         if _table is None:
-            self.__table__ = Table(cols=[self])
+            self.__table__ = Table()
+            setattr(self.__table__, self.__name__, self)
         else:
             self.__table__: ColumnTableType = _table
-        if items is not None:
-            self += items
+        for item in items:
+            self += item
 
     def __call__(self):
         return self.__attrs__
@@ -62,35 +63,44 @@ class Column(T.Generic[ColumnCellType, ColumnTableType]):
     def __iadd__(self, other):
         """Cat"""
         assert len(self.__table__()) <= 1, \
-            f"Concatenating to column {self} forbidden because it belongs to {self.__table__} of multiple columns"
-
-
-    def __isub__(self, other):
-        """Merge (into table)"""
+            f"Concatenating to column {self} is forbidden because it belongs to {self.__table__} of multiple columns"
+        elements = [Row() for _ in range(len(other))]
+        for row, element in zip(elements, other):
+            setattr(row, self.__name__, element)
+        self.__table__ += elements
+        return self
 
     def __imul__(self, other):
         """Apply"""
+        return self
 
     def __itruediv__(self, other):
         """Group"""
+        return self
 
     def __ixor__(self, other):
         """Sort"""
+        return self
 
     def __iand__(self, other):
         """Inner Join"""
+        return self
 
     def __ior__(self, other):
         """Outer Join"""
+        return self
 
     def __ilshift__(self, other):
         """Left Join"""
+        return self
 
     def __irshift__(self, other):
         """Right Join"""
+        return self
 
     def __imatmul__(self, other):
         """Cartesian Product"""
+        return self
 
 
 ColumnAttrsType = T.TypeVar('ColumnAttrsType', bound=Column)
@@ -112,7 +122,7 @@ class ColumnAttrs(T.Generic[ColumnAttrsType]):
 
 class Table:
     def __init__(self, *rows: T.Iterable[T.Self], cols=None, file=None):
-        self.__attrs__: TableAttrs[T.Self] = TableAttrs(self, cols)
+        self.__attrs__: TableAttrs[T.Self] = TableAttrs(self)
         self.__rows__: list[T.Self] = list(row for rows_ in rows for row in rows_)
         if isinstance(cols, Table):
             cols = {col.__name__: col for col in cols()}
@@ -121,8 +131,9 @@ class Table:
         elif not isinstance(cols, dict):
             cols = {col.__name__: col for col in cols}
         cols = {col_name: cp.copy(col) for col_name, col in cols.items()}
-        for col in cols.values():
+        for name, col in cols.items():
             col.__table__ = self
+
         self.__dict__.update(cols)
         self.__getitem_hook__ = None
         self.__getitems_hook__ = None
@@ -150,6 +161,8 @@ class Table:
     def __contains__(self, item):
         if isinstance(item, Column):
             return item in self.__dict__.values()
+        elif isinstance(item, Row):
+            return item in self.__rows__
         else:
             return self.__contains_hook__(item)
 
@@ -257,44 +270,60 @@ class Table:
 
     def __iadd__(self, other):
         """Cat"""
-        self.__rows__.extend(other)
+        if isinstance(other, Row):
+            self.__rows__.append(other)
+        else:
+            self.__rows__.extend(other)
+        return self
 
     def __isub__(self, other):
         """Merge"""
+        return self
 
     def __itruediv__(self, other):
         """Group"""
+        return self
 
     def __imul__(self, other):
         """Apply"""
+        return self
 
     def __ixor__(self, other):
         """Sort"""
+        return self
 
     def __imatmul__(self, other):
         """Cartesian product"""
+        return self
 
     def __iand__(self, other):
         """Inner join"""
+        return self
 
     def __ior__(self, other):
         """Outer join"""
+        return self
 
     def __ilshift__(self, other):
         """Left join"""
+        return self
 
     def __irshift__(self, other):
         """Right join"""
+        return self
 
 
 TableAttrsType  = T.TypeVar('TableAttrsType')
 
 class TableAttrs(T.Generic[TableAttrsType]):
-    def __init__(self, tab: TableAttrsType, cols=None):
+    def __init__(self, tab: TableAttrsType):
         self.tab: TableAttrsType = tab
 
     def __iter__(self) -> T.Iterator[Column[T.Any, TableAttrsType]]:
         return iter(col for col in self.tab.__dict__.values() if isinstance(col, Column))
+
+    def __len__(self):
+        return len(tuple(col for col in self.tab.__dict__.values() if isinstance(col, Column)))
 
     def __contains__(self, item: str | Column):
         if isinstance(item, str):
