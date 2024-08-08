@@ -325,12 +325,14 @@ class Table:
                 for row, item in zip(rows, other):
                     for var, val in item.items():
                         setattr(row, var, val)
+                self.__rows__.extend(rows)
             elif isinstance(first, (list, tuple)):
                 rows = [self.__rowtype__() for _ in range(len(other))]
                 vars = tuple(col.__name__ for col in self.__attrs__)
                 for row, item in zip(rows, other):
                     for var, val in zip(vars, item):
-                        setattr(row, var.__name__, val)
+                        setattr(row, var, val)
+                self.__rows__.extend(rows)
             else:
                 self.__rows__.extend(other)
         return self

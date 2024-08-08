@@ -10,7 +10,7 @@ with ez.test('define'):
 
     @dc.dataclass
     class Turn(ez.Row):
-        text: ez.Col[str, Turn]
+        text: ez.Col[str, Turn] = None
         index: ez.Col[int, Turn] = 0
         dial: ez.Col[str, Turn] = None
         doms: ez.Col[set[str], Turn] = ez.default(set)
@@ -100,6 +100,15 @@ with ez.test('select rows and columns'):
     assert list(selection()) == [selection.id, selection.index]
     assert not hasattr(selection, 'text')
     assert selection.id == ez.Column(('xb', 'xc'))
+
+
+with ez.test('cat'):
+    other += turns
+    assert other.id == ez.Column(('xa', 'xb', 'xc', 'xd', 'xa', 'xb', 'xc', 'xd'))
+    other += [['Blah', 0, 'd', {'x'}, 'xy']]
+    assert other.id == ez.Column(('xa', 'xb', 'xc', 'xd', 'xa', 'xb', 'xc', 'xd', 'xy'))
+    other += [dict(id='xz')]
+    assert other.id == ez.Column(('xa', 'xb', 'xc', 'xd', 'xa', 'xb', 'xc', 'xd', 'xy', 'xz'))
 
 
 
