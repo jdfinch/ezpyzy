@@ -6,6 +6,7 @@ import copy as cp
 import re
 
 from ezpyzy.alphanumeral import alphanumeral
+from ezpyzy.hash import hash
 
 
 ''' ============================== Column ============================== '''
@@ -13,6 +14,7 @@ from ezpyzy.alphanumeral import alphanumeral
 ColumnCellType = T.TypeVar('ColumnCellType')
 ColumnTableType = T.TypeVar('ColumnTableType')
 OtherColumnTableType = T.TypeVar('OtherColumnTableType')
+OtherTableType = T.TypeVar('OtherTableType', bound='Table')
 
 class Column(T.Generic[ColumnCellType, ColumnTableType]):
 
@@ -103,6 +105,12 @@ class Column(T.Generic[ColumnCellType, ColumnTableType]):
         return self
 
 
+    def __sub__(self,
+        other: Column[OtherColumnTableType]|OtherTableType
+    ) -> ColumnTableType | OtherColumnTableType | OtherTableType:
+        """Merge"""
+
+
 ColumnAttrsType = T.TypeVar('ColumnAttrsType', bound=Column)
 
 class ColumnAttrs(T.Generic[ColumnAttrsType]):
@@ -121,20 +129,49 @@ class ColumnAttrs(T.Generic[ColumnAttrsType]):
 ''' ============================== Table ============================== '''
 
 class Table:
-    def __init__(self, *rows: T.Iterable[T.Self], cols=None, file=None):
+    def __init__(self, *rows: T.Iterable[T.Self], __layout__=None, **cols):
         self.__attrs__: TableAttrs[T.Self] = TableAttrs(self)
-        self.__rows__: list[T.Self] = list(row for rows_ in rows for row in rows_)
-        if isinstance(cols, Table):
-            cols = {col.__name__: col for col in cols()}
-        elif cols is None:
-            cols = {}
-        elif not isinstance(cols, dict):
-            cols = {col.__name__: col for col in cols}
-        cols = {col_name: cp.copy(col) for col_name, col in cols.items()}
+        self.__rows__: list[T.Self] = []
+        if __layout__ is None:
+            if not cols and rows:
+                layout = {}
+                for table in rows:
+                    if isinstance(table, Table):
+                        for c in table():
+                            layout[c.__name__] = Column(name=c.__name__, _table=self)
+            else:
+                layout = {name: Column(name=name, _table=self) for name in cols}
+        elif isinstance(__layout__, Table):
+            layout = {col.__name__: type(col)(name=col.__name__, _table=self)
+                for col in __layout__()}
+        elif isinstance(__layout__, TableAttrs):
+            layout = {col.__name__: type(col)(name=col.__name__, _table=self)
+                for col in __layout__}
+        elif isinstance(__layout__, dict):
+            layout = {}
+            for name, col in __layout__.items():
+                if isinstance(col, Column):
+                    layout[name] = type(col)(name=name, _table=self)
+                else:
+                    layout[name] = Column(name=name, _table=self)
+        else:
+            layout = {}
+            for col in __layout__:
+                if isinstance(col, Column):
+                    layout[col.__name__] = type(col)(name=col.__name__, _table=self)
+                else:
+                    layout[col] = Column(name=col, _table=self)
+        self.__dict__.update(layout)
+        for rows_ in rows:
+            self += rows_
+        if cols and not rows:
+            for name, col in cols.items():
+                if col is not None and col is not ...:
+                    self.__rows__.extend(Row() for _ in range(len(col))) # noqa ????
+                    break
         for name, col in cols.items():
-            col.__table__ = self
-
-        self.__dict__.update(cols)
+            if col is not None and col is not ...:
+                self -= col
         self.__getitem_hook__ = None
         self.__getitems_hook__ = None
         self.__contains_hook__ = None
@@ -171,50 +208,47 @@ class Table:
         if isinstance(item, int):
             return  self.__rows__[item]
         elif isinstance(item, slice):
-            return Table(self.__rows__[item], cols=self)
+            return Table(self.__rows__[item], __layout__=self())
         elif isinstance(item, tuple):
             if not item:
-                column_view = Table(cols={})
+                column_view = Table(__layout__={})
                 column_view.__rows__ = self.__rows__
                 return column_view
             elif isinstance(item[0], Column):
-                column_view = Table(cols={col.__name__: col for col in item})
+                column_view = Table(__layout__=item)
                 column_view.__rows__ = self.__rows__
                 return column_view
             else:
                 row_selector, *col_selector = item
-                rows_view = self[row_selector]
-                if not col_selector:
-                    return rows_view[col_selector]
-                elif isinstance(col_selector[0], Column):
-                    column_view = Table(cols={col.__name__: col for col in col_selector})
-                    column_view.__rows__ = rows_view.__rows__
-                    return column_view
-                else:
-                    return Table((row[col_selector] for row in rows_view), cols=rows_view.__attrs__.cols)
+                if len(col_selector) == 1 and isinstance(col_selector, tuple):
+                    col_selector = col_selector[0]
+                row_selection = self[row_selector]
+                col_selection = row_selection[col_selector]
+                return col_selection
         elif isinstance(item, list):
             if not item:
-                return Table(cols=self)
-            elif isinstance(item[0], int):
-                return Table((self.__rows__[i] for i in item), cols=self)
+                return Table(__layout__=self())
+            elif isinstance(item[0], Column):
+                return self[tuple(item)]
             elif isinstance(item[0], bool):
                 assert len(item) == len(self.__rows__), f"Boolean selector must be the same length as the table."
                 return Table(
-                    (row for row, select in zip(self.__rows__, item) if select),
-                    cols=self.__attrs__.cols)
+                    (row for row, select in zip(self.__rows__, item) if select), __layout__=self())
+            elif isinstance(item[0], int):
+                return Table((self.__rows__[i] for i in item), __layout__=self())
             else:
-                return Table(self.__getitems_hook__(item), cols=self.__attrs__.cols)
+                return Table(self.__getitems_hook__(item), __layout__=self())
         elif isinstance(item, Column):
-            column_view = Table(cols={item.__name__: item})
+            column_view = Table(__layout__=(item,))
             column_view.__rows__ = self.__rows__
             return column_view
-        elif isinstance(item, ellipsis):
-            return Table(self.__rows__, cols=self.__attrs__.cols)
+        elif item == ...:
+            return Table(self.__rows__, __layout__=self())
         elif callable(item):
             selector = [item(row) for row in self.__rows__]
             return self[selector]
         else:
-            return Table(self.__getitem_hook__(item), cols=self.__attrs__.cols)
+            return Table(self.__getitem_hook__(item), __layout__=self())
 
     def __setitem__(self, item, value):
         """Insert"""
@@ -242,28 +276,28 @@ class Table:
                     return Table((row[col_selector] for row in rows_view), cols=rows_view.__attrs__.cols)
         elif isinstance(item, list):
             if not item:
-                return Table(cols=self.__attrs__.cols)
+                return Table(__layout__=self())
             elif isinstance(item[0], int):
-                return Table((self.__rows__[i] for i in item), cols=self.__attrs__.cols)
+                return Table((self.__rows__[i] for i in item), __layout__=self())
             elif isinstance(item[0], bool):
                 assert len(item) == len(self.__rows__), f"Boolean selector must be the same length as the table."
                 return Table(
                     (row for row, select in zip(self.__rows__, item) if select),
-                    cols=self.__attrs__.cols
+                    __layout__=self()
                 )
             else:
-                return Table(self.__getitems_hook__(item), cols=self.__attrs__.cols)
+                return Table(self.__getitems_hook__(item), __layout__=self())
         elif isinstance(item, Column):
             column_view = Table(cols={item.__name__: item})
             column_view.__rows__ = self.__rows__
             return column_view
         elif isinstance(item, ellipsis):
-            return Table(self.__rows__, cols=self.__attrs__.cols)
+            return Table(self.__rows__, __layout__=self())
         elif callable(item):
             selector = [item(row) for row in self.__rows__]
             return self[selector]
         else:
-            return Table(self.__getitem_hook__(item), cols=self.__attrs__.cols)
+            return Table(self.__getitem_hook__(item), __layout__=self())
 
     def __delitem__(self, item):
         """Clear"""
@@ -363,8 +397,8 @@ def inspect_row_layout(cls) -> dict[str, Column]:
 
 class Row(Table, metaclass=RowMeta):
     @classmethod
-    def s(cls, *rows, file=None) -> T.Self:
-        return Table(*rows, cols=cls.__cols__, file=file)
+    def s(cls, *rows) -> T.Self:
+        return Table(*rows, __layout__=cls.__cols__)
 
 
 ''' ============================== Usage ============================== '''

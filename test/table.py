@@ -45,6 +45,11 @@ with ez.test('construct column'):
     assert column().table.numbers is column
 
 
+with ez.test('row equality'):
+    assert Turn("hello", 0) == Turn("hello", 0)
+    assert Turn("hello", 0) != Turn("hello", 1)
+
+
 with ez.test('table equality'):
     other = Turn.s((
         other_0 := Turn('Hello', 0, 'd', {'a', 'b'}, 'xa'),
@@ -75,27 +80,24 @@ with ez.test('select rows by index'):
 
 
 with ez.test('select rows by mask'):
-    ...
-
-
-with ez.test('select rows by set membership'):
-    ...
+    assert turns[[True, False, True, False]].id == ez.Column(('xa', 'xc'))
 
 
 with ez.test('select rows by predicate'):
-    ...
-
-
-with ez.test('select rows by index function'):
-    ...
+    has_domain_a = lambda turn: 'a' in turn.doms
+    assert turns[has_domain_a].id == ez.Column(('xa', 'xd'))
 
 
 with ez.test('select columns'):
-    ...
+    selection = turns[turns.id, turns.index]
+    assert list(selection()) == [turns.id, turns.index]
+    assert not hasattr(selection, 'text')
+    assert selection.id == ez.Column(('xa', 'xb', 'xc', 'xd'))
 
 
 with ez.test('select rows and columns'):
-    ...
-
-
+    selection = turns[[1, 2], turns.id, turns.index]
+    assert list(selection()) == [selection.id, selection.index]
+    assert not hasattr(selection, 'text')
+    assert selection.id == ez.Column(('xb', 'xc'))
 

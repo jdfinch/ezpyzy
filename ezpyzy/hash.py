@@ -6,6 +6,8 @@ import base64 as b64
 
 import ezpyzy.pyr as pyon
 
+serializer = pyon.PyrEncoder()
+
 
 def hash(o):
     if isinstance(o, str):
@@ -13,7 +15,7 @@ def hash(o):
     elif isinstance(o, bytes):
         s = o
     else:
-        s = pyon.PyrEncoder().encode(o).encode()
+        s = serializer.encode(o).encode()
     sha = hl.sha256(s).digest()
     ascii = b64.standard_b64encode(sha).decode('ascii')
     return ascii
