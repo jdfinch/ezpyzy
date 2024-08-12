@@ -103,12 +103,25 @@ with ez.test('select rows and columns'):
 
 
 with ez.test('cat'):
+    other = Turn.s([
+        ['A', 0, 'd', {'x'}, 'xi'],
+        ['Test', 1, 'd', {'y'}, 'xj'],
+    ])
     other += turns
-    assert other.id == ez.Column(('xa', 'xb', 'xc', 'xd', 'xa', 'xb', 'xc', 'xd'))
+    assert other.id == ez.Column(('xi', 'xj', 'xa', 'xb', 'xc', 'xd'))
     other += [['Blah', 0, 'd', {'x'}, 'xy']]
-    assert other.id == ez.Column(('xa', 'xb', 'xc', 'xd', 'xa', 'xb', 'xc', 'xd', 'xy'))
+    assert other.id == ez.Column(('xi', 'xj', 'xa', 'xb', 'xc', 'xd', 'xy'))
     other += [dict(id='xz')]
-    assert other.id == ez.Column(('xa', 'xb', 'xc', 'xd', 'xa', 'xb', 'xc', 'xd', 'xy', 'xz'))
+    assert other.id == ez.Column(('xi', 'xj', 'xa', 'xb', 'xc', 'xd', 'xy', 'xz'))
+
+
+with ez.test('merge'):
+    other = ez.Table(
+        score=[1.5, 2.5],
+        result=['Good', 'Bad']
+    )
+    assert other.score == ez.Column([1.5, 2.5])
+    other -= turns
 
 
 
