@@ -39,7 +39,7 @@ def temporary_update(obj, originals):
 def replace_inplace(obj, **kwargs):
     objvars = vars(obj)
     kwargs = {k: v for k, v in kwargs.items() if k in objvars}
-    vars(obj).update(kwargs)
+    vars(obj).update(kwargs) # noqa
     if hasattr(obj, '__post_init__'):
         obj.__post_init__()
     context_manager = temporary_update(obj, objvars)
@@ -74,7 +74,7 @@ def specified(fn: F2) -> F2:
             self_param = next(iter(specified))
             self_arg = specified[self_param]
             del specified[self_param]
-            self_arg.settings = specifiedsco
+            self_arg.settings = specified
             return fn(*args, **kwargs)
     return wrapper
 

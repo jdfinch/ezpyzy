@@ -9,43 +9,72 @@ import re
 from ezpyzy.alphanumeral import alphanumeral
 from ezpyzy.hash import hash
 
+def _imports(): pass
+
 """
 Primitives:
 
 add column:     Table.__isub__          table -= column/table   ✓
-add row:        Table.__iadd__          table += row/table
+add row:        Table.__iadd__          table += row/table      ✓
 insert data:    Column.__setitem__      col[...] = value(s)     ✓
-delete data:    Column.__delete_data__  del table[...] = None   ✓
-del column:     Table.__delitem__       del table[column(s)]
-del row:        Table.__delitem__       del table[row(s)]
+delete data:    Column.__delitem__      del col[...]            ✓
+del column:     Table.__delitem__       del table[column(s)]    ✓
+del row:        Table.__delitem__       del table[row(s)]       ✓              
 
 """
 
+def _constants(): pass
+
 sentinel = object()
+default = object()
 
 
 
 ''' ============================== Column ============================== '''
+
+"""
+1. Creating a floating column from data                                                 => init constructor
+2. Creating a floating column about to be attached to a Table (no data, methods throw)  => init constructor
+3. Creating a view column for a column-view Table                                       => col view constructor
+4. Creating a view column for a row-view Table (also treated as column-view Table)      => row view constructor
+5. Creating a column for a Table with a fully defined Row layout (Row.s called)         => model constructor
+6. Creating a column to import some data from another Table                             => transfer constructor
+"""
 
 ColumnCellType = T.TypeVar('ColumnCellType')
 ColumnTableType = T.TypeVar('ColumnTableType')
 OtherColumnTableType = T.TypeVar('OtherColumnTableType')
 OtherTableType = T.TypeVar('OtherTableType', bound='Table')
 
+
 class Column(T.Generic[ColumnCellType, ColumnTableType]):
 
-    def __init__(self, *items, name='Column'):
+    def __init__(self, *items, name=default):
         self.__attrs__ = ColumnAttrs(self)
-        if items and isinstance(items[0], Column):
-            self.__name__ = items[0].__name__
-        else:
-            self.__name__ = name
         self.__table__: ColumnTableType = None  # noqa
+        if name is default:
+            if items and isinstance(items[0], str):
+                name, *items = items
+            else:
+                name = '_'
+        self.__name__ = name
         if items:
             table = Table()
             table -= self
             items = tuple(item for items_ in items for item in items_)
             self += items
+
+    def __col_view_init__(self) -> Column[ColumnCellType, ColumnTableType]:
+        return cp.copy(self)
+
+    def __row_view_init__(self) -> Column[ColumnCellType, ColumnTableType]:
+        return RowViewColumn[ColumnCellType, ColumnTableType](name=self.__name__)
+
+    def __model_init__(self) -> Column[ColumnCellType, ColumnTableType]:
+        return cp.deepcopy(self)
+
+    def __transfer_init__(self) -> Column[ColumnCellType, Table]:
+        return Column[ColumnCellType, Table](name=self.__name__)
 
     def __call__(self):
         return self.__attrs__
@@ -60,7 +89,7 @@ class Column(T.Generic[ColumnCellType, ColumnTableType]):
 
     def __str__(self):
         if self.__table__ is None:
-            return f"{self.__name__}[...]"
+            return f"<Unattached Column object {self.__name__}>"
         max_items = 5
         if len(self) > max_items:
             return f"{self.__name__}[{', '.join(repr(x) for x in self[:max_items-2])}, ..., {repr(self[-1])}]"
@@ -78,6 +107,7 @@ class Column(T.Generic[ColumnCellType, ColumnTableType]):
         return getattr(self.__table__[item], self.__name__)
 
     def __setitem__(self, selector, values):
+        """Insert Data"""
         if isinstance(selector, int):
             indices = (selector,)
             values = (values,)
@@ -119,9 +149,43 @@ class Column(T.Generic[ColumnCellType, ColumnTableType]):
             rows[index].__dict__[var] = value
         return None
 
-    __delete_data__: T.Callable[[tuple[int, ...]], list[int]|None] = None
+    def __delitem__(self, selector):
+        """Delete Data"""
+        if isinstance(selector, int):
+            selection = (selector,)
+        elif isinstance(selector, slice):
+            selection = tuple(range(*selector.indices(len(self))))
+        elif callable(selector):
+            selection = tuple(selector(value) for value in self)
+            return self.__delitem__(selection)
+        else:
+            if not isinstance(selector, (tuple, list)):
+                selector = tuple(selector)
+            if not selector:
+                return
+            first = selector[0]
+            if isinstance(first, bool):
+                selection = tuple(i for i, flag in enumerate(selector) if flag)
+            elif isinstance(first, int):
+                selection = selector
+            else:
+                raise NotImplemented("Custom selectors are not yet implemented")
+        if self.__delete_data__:
+            return self.__delete_data__(selection)  # noqa
+
+    def __delete_data__(self, selection: tuple[int, ...]) -> list[int]|None:
+        """Delete Data"""
+        rows = self.__table__.__rows__
+        var = self.__name__
+        for index in selection:
+            del rows[index].__dict__[var]
+        return None
+
+    __remove_data__: T.Callable[[tuple[int, ...]], list[int] | None] = None
+    """Remove rows from Table"""
 
     __add_data__: T.Callable[[tuple[int, ...]], list[int]|None] = None
+    """Add rows to Table with existing data"""
 
     def __iadd__(self, other):
         """Cat"""
@@ -184,54 +248,110 @@ class ColumnAttrs(T.Generic[ColumnAttrsType]):
         return self.col.__name__
 
 
+RowViewColumnCellType = T.TypeVar('RowViewColumnCellType')
+RowViewColumnTableType = T.TypeVar('RowViewColumnTableType')
+
+class RowViewColumn(T.Generic[RowViewColumnCellType, RowViewColumnTableType],
+    Column[RowViewColumnCellType, RowViewColumnTableType]):
+
+    def __init__(self, name, original):
+        Column.__init__(self, name=name)
+        self.__original__ = original
+
+    def __row_view_init__(self) -> Column[ColumnCellType, ColumnTableType]:
+        return type(self)(name=self.__name__, original=self.__original__)
+
+    ... # todo: route primitive mutations to the original Column
+
+
 ''' ============================== Table ============================== '''
 
+"""
+0. Create an empty Table without a layout                           ✓
+1. Create a Table from some data without a layout                   ✓
+2. Create a Table with a Row layout by calling Row.s                
+3. Create a Table with column view
+4. Create a Table with row view
+5. Copy a Table from an existing Table (transfer rows to copy)
+"""
+
 class Table:
-    def __init__(self, *rows: T.Iterable[T.Self], __layout__:type[Row]=None, __rowtype__=None, **cols):
+    def __init__(self,
+        *rows: T.Iterable[T.Self],
+        layout: type[Row] | Table | TableAttrs | dict[str, Column | None] | T.Iterable[Column | str] = None,
+        rowtype = None,
+        cols: Table|dict[str, Column|T.Iterable]|T.Iterable[Column|T.Iterable] = None
+    ):
         self.__attrs__: TableAttrs[T.Self] = TableAttrs(self)
         self.__rows__: list[T.Self] = []
-        self.__rowtype__: type[Row] = __rowtype__ or Row
-        if __layout__ is None:
-            if not cols and rows:
-                layout = {}
-                for table in rows:
-                    if isinstance(table, Table):
-                        for c in table():
-                            layout[c.__name__] = Column(name=c.__name__, _table=self)
-            else:
-                layout = {name: Column(name=name, _table=self) for name in cols}
-        elif isinstance(__layout__, Table):
-            layout = {col.__name__: type(col)(name=col.__name__, _table=self)
-                for col in __layout__()}
-            self.__rowtype__ = __layout__.__rowtype__
-        elif isinstance(__layout__, TableAttrs):
-            layout = {col.__name__: type(col)(name=col.__name__, _table=self)
-                for col in __layout__}
-        elif isinstance(__layout__, type) and hasattr(__layout__, '__cols__'):
-            layout = {col.__name__: type(col)(name=col.__name__, _table=self)
-                for col in __layout__.__cols__.values()}
-            self.__rowtype__: type[Row] = __layout__
-        elif isinstance(__layout__, dict):
-            layout = {}
-            for name, col in __layout__.items():
+        self.__rowtype__: type[Row] = rowtype or Row
+        self.__colnameidx__: int = 0
+        if layout is None:
+            layout_cols = {}
+        elif isinstance(layout, Table):
+            layout_cols = {col.__name__: col.__model_init__()
+                for col in layout()}
+            self.__rowtype__ = layout.__rowtype__
+        elif isinstance(layout, TableAttrs):
+            layout_cols = {col.__name__: col.__model_init__()
+                for col in layout}
+        elif isinstance(layout, type) and hasattr(layout, '__cols__'):
+            layout_cols = {col.__name__: col.__model_init__()
+                for col in layout.__cols__.values()}
+            self.__rowtype__: type[Row] = layout  # noqa
+        elif isinstance(layout, dict):
+            layout_cols = {}
+            for name, col in layout.items():
                 if isinstance(col, Column):
-                    layout[name] = type(col)(name=name, _table=self)
+                    layout_cols[name] = col.__model_init__()
                 else:
-                    layout[name] = Column(name=name, _table=self)
+                    layout_cols[name] = Column(name=name)
         else:
-            layout = {}
-            for col in __layout__:
+            layout_cols = {}
+            for col in layout:
                 if isinstance(col, Column):
-                    layout[col.__name__] = type(col)(name=col.__name__, _table=self)
+                    layout_cols[col.__name__] = col.__model_init__()
                 else:
-                    layout[col] = Column(name=col, _table=self)
-        self.__dict__.update(layout)
+                    layout_cols[col] = Column(name=col)
+        for name, col in layout_cols.items():
+            col.__name__ = self.__getcolname__(name)
+            col.__table__ = self
+            self.__dict__[col.__name__] = col
         for rows_ in rows:
             self += rows_
-        self -= cols
-        self.__getitem_hook__ = None
-        self.__getitems_hook__ = None
-        self.__contains_hook__ = None
+        if cols is not None:
+            self -= cols
+
+    __flexible__ = False
+
+    def __neg__(self):
+        flexible_view = self.__col_view_init__()
+        flexible_view.__flexible__ = True
+        return flexible_view
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.__flexible__ = False
+
+    def __row_view_init__(self):
+        # todo: call column row view constructors to copy table
+        return ...
+
+    def __col_view_init__(self):
+        # todo: call column column view constructors to copy table, and have __rows__ reference the same list in copy
+        return ...
+
+    def __getcolname__(self, name="_") -> str:
+        # todo: apply this new __getcolname__() to all column-adding places
+        if name == "_":
+            while isinstance(self.__dict__.get(name := alphanumeral(self.__colnameidx__)), Column):
+                self.__colnameidx__ += 1
+            self.__colnameidx__ += 1
+        else:
+            assert name not in self.__dict__
+        return name
 
     def __call__(self):
         return self.__attrs__
@@ -260,36 +380,20 @@ class Table:
         else:
             return self.__contains_hook__(item)
 
-    def __getattr__(self, item):
-        column = Column(name=item)
-        self -= column
-        return column
-
-    def __setattr__(self, key, value):
-        if isinstance(value, Column):
-            if key != value.__name__:
-                if value.__table__ is None:
-                    value.__name__ = key
-                else:
-                    value = type(value)(name=key)
-            self -= value
-        else:
-            super().__setattr__(key, value)
-
     def __getitem__(self, item) -> T.Self:
         """Select"""
         if isinstance(item, int):
             return  self.__rows__[item]
         elif isinstance(item, slice):
-            return Table(self.__rows__[item], __layout__=self)
+            return Table(self.__rows__[item], layout=self)
         elif isinstance(item, tuple):
             if not item:
-                column_view = Table(__layout__=(), __rowtype__=self.__rowtype__)
+                column_view = Table(layout=(), rowtype=self.__rowtype__)
                 column_view.__rows__ = self.__rows__
                 return column_view
             elif isinstance(item[0], Column):
                 cols = tuple(self.__dict__[col.__name__] for col in item)
-                column_view = Table(__layout__=cols, __rowtype__=self.__rowtype__)
+                column_view = Table(layout=cols, rowtype=self.__rowtype__)
                 column_view.__rows__ = self.__rows__
                 return column_view
             else:
@@ -299,52 +403,145 @@ class Table:
                 return self[row_selector][col_selector]
         elif isinstance(item, list):
             if not item:
-                return Table(__layout__=self)
+                return Table(layout=self)
             elif isinstance(item[0], Column):
                 return self[tuple(item)]
             elif isinstance(item[0], bool):
                 assert len(item) == len(self.__rows__), f"Boolean selector must be the same length as Table {self}, got length {len(item)}"
                 return Table(
-                    (row for row, select in zip(self.__rows__, item) if select), __layout__=self())
+                    (row for row, select in zip(self.__rows__, item) if select), layout=self())
             elif isinstance(item[0], int):
-                return Table((self.__rows__[i] for i in item), __layout__=self)
+                return Table((self.__rows__[i] for i in item), layout=self)
             else:
-                return Table(self.__getitems_hook__(item), __layout__=self)
+                return Table(self.__getitems_hook__(item), layout=self)
         elif isinstance(item, Column):
             col = self.__dict__[item.__name__]
-            column_view = Table(__layout__=(col,), __rowtype__=self.__rowtype__)
+            column_view = Table(layout=(col,), rowtype=self.__rowtype__)
             column_view.__rows__ = self.__rows__
             return column_view
         elif item == ...:
-            return Table(self.__rows__, __layout__=self)
+            return Table(self.__rows__, layout=self)
         elif callable(item):
             selector = [item(row) for row in self.__rows__]
             return self[selector]
         else:
-            return Table(self.__getitem_hook__(item), __layout__=self)
+            return Table(self.__getitem_hook__(item), layout=self)
 
     def __setitem__(self, item, value):
         """Insert"""
 
-    def __delitem__(self, item):
-        """Clear"""
+    def __getattr__(self, item):
+        column = Column(name=item)
+        self -= column
+        return column
+
+    def __setattr__(self, key, value):
+        if isinstance(value, Column):
+            if value.__table__ is not None:
+                value = value.__transfer_init__()
+            value.__name__ = key
+            self -= value
+        else:
+            super().__setattr__(key, value)
+
+    def __delattr__(self, name):
+        """Drop Column"""
+        del self[self.__dict__[name]]
+
+    def __delitem__(self, selector):
+        """Drop/Delete Data"""
+        if isinstance(selector, int):
+            for column in self():
+                if column.__remove_data__:
+                    column.__remove_data__((selector,))
+            del self.__rows__[selector]
+        elif isinstance(selector, Column):
+            selector = self.__dict__[selector.__name__]
+            del self.__dict__[selector.__name__]
+        elif isinstance(selector, slice):
+            selection = tuple(range(*selector.indices(len(self))))
+            for column in self():
+                if column.__remove_data__:
+                    column.__remove_data__(selection)
+            del self.__rows__[selector]
+        elif callable(selector):
+            selection = tuple(selector(row) for row in self.__rows__)
+            return self.__delitem__(selection)
+        else:
+            if not isinstance(selector, (list, tuple)):
+                selector = tuple(selector)
+            if not selector:
+                return
+            if isinstance(selector, tuple):
+                rselect, *cselect = selector
+                if cselect:
+                    if isinstance(cselect[0], Column):
+                        for column in tuple(self[rselect].__dict__[c.__name__] for c in cselect):
+                            del column[:]
+                    elif isinstance(cselect[0], slice):
+                        for column in list(self[rselect]())[cselect[0]]:
+                            del column[:]
+                    elif cselect[0] is Ellipsis:
+                        for column in self[rselect]():
+                            del column[:]
+                else:
+                    return self.__delitem__(rselect)
+            first = selector[0]
+            if isinstance(first, bool):
+                assert len(self) == len(selector), f"Boolean selector of length {len(selector)} does not match length {len(self)} of Table {self}"
+                indices = tuple(i for i, flag in enumerate(selector) if flag)
+                for column in self():
+                    if column.__remove_data__:
+                        column.__remove_data__(indices)
+                j = 0
+                for i, row in enumerate(self.__rows__):
+                    if selector[i]:
+                        self.__rows__[j] = row
+                        j += 1
+                del self.__rows__[j:]
+            elif isinstance(first, int):
+                for column in self():
+                    if column.__remove_data__:
+                        column.__remove_data__(selector)
+                j = 0
+                for i, row in enumerate(self.__rows__):
+                    if i in selector:
+                        self.__rows__[j] = row
+                        j += 1
+                del self.__rows__[j:]
+            elif isinstance(first, Column):
+                for column in tuple(self.__dict__[column.__name__] for column in selector):
+                    del self.__dict__[column.__name__]
+            else:
+                raise NotImplemented("Custom selectors are not yet implemented")
 
     def __iadd__(self, other):
         """Cat"""
         if isinstance(other, Row):
             self.__rows__.append(other)
+            indices = (len(self.__rows__)-1,)
             for column in self():
                 if column.__add_data__:
-                    column.__add_data__((other,))
+                    column.__add_data__(indices)
         else:
-            if not isinstance(other, (tuple, list, Table)):
+            if isinstance(other, Table):
+                if self.__flexible__:
+                    for col in other():
+                        if not isinstance(self.__dict__.get(col.__name__), Column):
+                            self -= col.__transfer_init__()
+            elif not isinstance(other, (tuple, list)):
                 other = tuple(other)
             if not other:
                 return self
             first = other[0]
             if isinstance(first, Row):
-                self.__rows__.extend(other)
+                self.__rows__.extend(rows:=other)
             elif isinstance(first, dict):
+                if self.__flexible__:
+                    col_names = dict.fromkeys(cname for row in other for cname in row)
+                    for col_name in col_names:
+                        if not isinstance(self.__dict__.get(col_name), Column):
+                            self -= Column(name=col_name)
                 rows = [self.__rowtype__() for _ in range(len(other))]
                 for row, item in zip(rows, other):
                     for var, val in item.items():
@@ -358,33 +555,42 @@ class Table:
                         setattr(row, var, val)
                 self.__rows__.extend(rows)
             else:
-                self.__rows__.extend(other)
+                self.__rows__.extend(rows:=other)
+            indices = tuple(range(len(self), len(self)+len(rows)))
+            for column in self():
+                if column.__add_data__:
+                    column.__add_data__(indices)
         return self
 
-    def __isub__(self, other):
+    def __isub__(self,
+        other: Column|Table|dict[str, Column|T.Iterable]|T.Iterable[Column|T.Iterable]
+    ):
         """Merge"""
         if isinstance(other, Column):
-            name = other.__name__
+            name = self.__getcolname__(other.__name__)
             if other.__table__ is None:
                 other.__table__ = self
+                other.__name__ = name
                 self.__dict__[name] = other
                 other.__add_data__(tuple(range(len(self))))
             else:
                 assert len(self) == len(other), f"Cannot merge column {other} with table {self} of different lengths"
-                column = type(other)(name=name)
+                column = other.__transfer_init__()
                 column.__table__ = self
+                column.__name__ = name
                 self.__dict__[name] = column
                 column[tuple(range(len(self)))] = other
         elif isinstance(other, Table):
             assert len(self) == len(other), f"Cannot merge table {other} with table {self} of different lengths"
             for col in other():
-                name = col.__name__
-                column = type(col)(name=name)
+                name = self.__getcolname__(col.__name__)
+                column = col.__transfer_init__()
                 column.__table__ = self
+                column.__name__ = name
                 self.__dict__[name] = column
                 column[tuple(range(len(self)))] = col
         elif isinstance(other, dict):
-            other = {name: tuple(col) if not isinstance(col, (tuple, list, Column)) else col
+            other = {self.__getcolname__(name): tuple(col) if not isinstance(col, (tuple, list, Column)) else col
                 for name, col in other.items()}
             for name, col in other.items():
                 if isinstance(col, Column):
@@ -393,11 +599,12 @@ class Table:
                         column.__name__ = name
                         column.__table__ = self
                         self.__dict__[name] = column
-                        col.__add_data__(tuple(range(len(self))))
+                        column.__add_data__(tuple(range(len(self))))
                     else:
                         assert len(self) == len(col), f"Cannot merge column {col} with table {self} of unequal length"
-                        column = type(col)(name=name)
+                        column = col.__transfer_init__()
                         column.__table__ = self
+                        column.__name__ = name
                         self.__dict__[name] = column
                         column[tuple(range(len(self)))] = col
                 else:
@@ -408,22 +615,21 @@ class Table:
         else:
             for col in other:
                 if isinstance(col, Column):
+                    name = self.__getcolname__(col.__name__)
                     if col.__table__ is None:
                         column = col
-                        name = alphanumeral(len(self()))
                         column.__table__ = self
                         column.__name__ = name
                         self.__dict__[name] = column
-                        col.__add_data__(tuple(range(len(self))))
+                        column.__add_data__(tuple(range(len(self))))
                     else:
                         assert len(self) == len(col), f"Cannot merge column {col} with table {self} of unequal length"
-                        name = col.__name__
-                        column = type(col)(name=name)
+                        column = col.__transfer_init__()
                         column.__table__ = self
                         self.__dict__[name] = column
                         column[tuple(range(len(self)))] = col
                 else:
-                    name = alphanumeral(len(self()))
+                    name = self.__getcolname__()
                     column = Column(name=name)
                     column.__table__ = self
                     self.__dict__[name] = column
@@ -516,7 +722,7 @@ class Row(Table, metaclass=RowMeta):
 
     @classmethod
     def s(cls, *rows, **cols) -> T.Self:
-        return Table(*rows, __layout__=cls, **cols)
+        return Table(*rows, layout=cls, **cols)
 
     def __getattr__(self, item):
         setattr(self.__class__, item, None)
