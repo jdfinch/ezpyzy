@@ -7,7 +7,6 @@ from dataclasses import dataclass
 import inspect as ins
 import functools as ft
 import pathlib as pl
-import copy as cp
 import sys
 
 from ezpyzy.setter import setters
@@ -174,7 +173,7 @@ class Config:
 
 if __name__ == '__main__':
 
-    vars().update(dataclass=config)
+    vars().update(dataclass=config) # noqa
 
     @dataclass
     class A(Config):
