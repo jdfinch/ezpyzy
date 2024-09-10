@@ -9,7 +9,7 @@ from ezpyzy.batch import batching, batched
 from ezpyzy.bind import bind
 from ezpyzy.cache import cache
 from ezpyzy.cat import cat
-from ezpyzy.config import config, defaults_from_self, Config
+from ezpyzy.config import config, take_defaults_from_self, Config
 from ezpyzy.test import test, Tests, Test, tests, test_groups
 from contextlib import nullcontext as collapsable # noqa
 from ezpyzy.debugging import debugging
