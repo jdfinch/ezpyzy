@@ -5,8 +5,11 @@ from __future__ import annotations
 import typing as T
 import itertools as it
 import functools as ft
+import multiprocessing as mp
+import inspect as ins
 from ezpyzy.globalize import globalize
 from ezpyzy.batch import batched
+from ezpyzy.timer import Timer
 
 
 J = T.TypeVar('J', bound=T.Iterable)
@@ -117,8 +120,15 @@ def multiprocess(
             batch_size=batch_size,
             batch_count=batch_count,
             batches_per_chunk=batches_per_chunk,
-            progress_bar=display)
+            display=display)
         return ft.partial(ft.partial, bound_multiprocess)
+    elif data is None:
+        return ft.partial(multiprocess, fn,
+            n_processes=n_processes,
+            batch_size=batch_size,
+            batch_count=batch_count,
+            batches_per_chunk=batches_per_chunk,
+            display=display)
     else:
         return _multiprocess(
             fn, data, n_processes, batch_size, batch_count, batches_per_chunk, display)
@@ -128,8 +138,6 @@ def multiprocess(
 if __name__ == '__main__':
 
     from ezpyzy import Timer
-    import multiprocessing as mp
-    import inspect as ins
 
     def main():
         with Timer('Create data'):
