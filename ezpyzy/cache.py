@@ -13,7 +13,7 @@ import typing as T
 F = T.TypeVar('F', bound=T.Callable)
 G = T.TypeVar('G', bound=T.Callable)
 
-def cache(fn:F=None, folder='.cache') -> F | T.Callable[[G], G]:
+def cache(fn:F=None, folder='cache') -> F | T.Callable[[G], G]:
     if fn is None:
         return lambda f: cache(f, folder)
     elif isinstance(fn, str):
