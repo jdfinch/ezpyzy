@@ -2,13 +2,14 @@
 import asyncio
 
 
-class QueueLoop:
-    def __init__(self):
+class JobQueue:
+    def __init__(self, jobs=()):
         self.loop = asyncio.get_event_loop()
         self.results = asyncio.Queue()
         self.active_jobs = 0
+        self.extend(jobs)
 
-    def __call__(self, jobs):
+    def extend(self, jobs):
         for job in jobs:
             if asyncio.iscoroutine(job):
                 async def run_job_and_put_result():
@@ -61,11 +62,11 @@ if __name__ == '__main__':
 
 
     def main():
-        loop = QueueLoop()
+        loop = JobQueue()
         ti = time.perf_counter()
-        for i, result in enumerate(loop([api('abcdefghijklmnop')])):
+        for i, result in enumerate(loop.extend([api('abcdefghijklmnop')])):
             for subseq in result:
-                loop([api(subseq)])
+                loop.extend([api(subseq)])
         tf = time.perf_counter()
         print(f'batch done in {tf - ti:.2f} seconds')
 
