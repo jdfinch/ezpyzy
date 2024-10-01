@@ -168,8 +168,8 @@ class _EmptySetTransformer(ast.NodeTransformer):
             return node
 _empty_set_transformer = _EmptySetTransformer()
 
-class PYON(Savable):
-    extension = ['pyon']
+class PyLS2(Savable):
+    extension = ['pyls2']
 
     @classmethod
     def deserialize(cls, string):
@@ -179,14 +179,17 @@ class PYON(Savable):
 
     def serialize(self: ..., *args, **kwargs):
         serialized = repr(self)
-        PYON.deserialize(serialized)
+        PyLS2.deserialize(serialized)
         return serialized
 
 
 _forbidden_raw_chars = set('\n\t')
 
-class PON(Savable):
-    extension = ['pon']
+class PyLS(Savable):
+    """"
+    Python Literal Serialization (PyLS) is a format for serializing Python literals as strings.
+    """
+    extension = ['pyls']
 
     @classmethod
     def deserialize(cls, string):
@@ -208,16 +211,19 @@ class PON(Savable):
         return repr(self)
 
 
-class TSV(Savable):
+class TSPy(Savable):
+    """
+    Table of Python Literal Serializations (TSPy), ultimately a TSV file.
+    """
 
-    extensions = ['tsv',]
+    extensions = ['tspy', 'tabpyls', 'tspyls', 'tspl', 'tspyl', 'tsl', 'tsp']
 
     @classmethod
     def deserialize(cls, string):
-        return [[PON.deserialize(cell) for cell in row.split('\t')] for row in string.split('\n') if row]
+        return [[PyLS.deserialize(cell) for cell in row.split('\t')] for row in string.split('\n') if row]
 
     def serialize(self: ..., *args, **kwargs):
-        return '\n'.join('\t'.join(PON.serialize(cell) for cell in row) for row in self)
+        return '\n'.join('\t'.join(PyLS.serialize(cell) for cell in row) for row in self)
 
 
 
@@ -489,7 +495,7 @@ if __name__ == '__main__':
             [set(), ('a', 'b',), {}, {1: {'a', 'b'}, 2: (), 3: [1, 2]}]
         ] * int(1)
 
-        serialized = TSV.serialize(table)
+        serialized = TSPy.serialize(table)
         # print(f'{type(serialized).__name__} {serialized = }')
 
         with Timer('Fast custom parser...'):
@@ -497,14 +503,14 @@ if __name__ == '__main__':
 
         print('hello')
 
-        with Timer('Deserializing PON...'):
-            deserialized = TSV.deserialize(serialized)
+        with Timer('Deserializing PyLS...'):
+            deserialized = TSPy.deserialize(serialized)
         # print('\n\n')
         # print(f'{type(deserialized).__name__} {deserialized = }')
         # print('\n\n')
         # print(f'{type(deserialized[4][3][1]).__name__ = }')
 
-        # with Timer('Fast Deserialize PON...'):
+        # with Timer('Fast Deserialize PyLS...'):
         #     with Timer('Parsing cells...'):
         #         cells = get_cells(serialized)
         #     with Timer('Scanning cells...'):
@@ -525,7 +531,7 @@ if __name__ == '__main__':
         serialized = '\n'.join('\t'.join(json.dumps(cell) for cell in row) for row in json_table)
 
         with Timer('Deserializing JSON...'):
-            deserialized = TSV.deserialize(serialized)
+            deserialized = TSPy.deserialize(serialized)
 
 
     main()

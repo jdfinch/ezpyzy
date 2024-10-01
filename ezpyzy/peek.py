@@ -9,6 +9,9 @@ import typing as T
 E = T.TypeVar('E')
 
 def peek(iterable: T.Iterable[E]) -> tuple[E | None, T.Iterable[E]]:
+    """
+    Get (the first element, iterable without the first element consumed).
+    """
     iterating = iter(iterable)
     try:
         e = next(iterating)

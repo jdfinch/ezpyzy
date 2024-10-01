@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ezpyzy.hash import hash
 from ezpyzy.file import File
-from ezpyzy.get_import_path import get_import_path
+from ezpyzy.import_path import get_import_path
 
 import inspect as ins
 
@@ -14,6 +14,9 @@ F = T.TypeVar('F', bound=T.Callable)
 G = T.TypeVar('G', bound=T.Callable)
 
 def cache(fn:F=None, folder='.cache') -> F | T.Callable[[G], G]:
+    """
+    Decorate a function to cache its results. Pyr serialization hashes the function code str + input arguments values. Pickle used to save the results to disk.
+    """
     if fn is None:
         return lambda f: cache(f, folder)
     elif isinstance(fn, str):
