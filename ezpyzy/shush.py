@@ -6,7 +6,7 @@ from io import StringIO
 import sys
 
 
-class shush:
+class Shush:
     def __init__(self):
         self.save_stdout = sys.stdout
         self.save_stderr = sys.stderr
@@ -21,3 +21,5 @@ class shush:
     def __exit__(self, exc_type, exc_val, exc_tb):
         sys.stdout = self.save_stdout
         sys.stderr = self.save_stderr
+
+shush = Shush()

@@ -140,7 +140,7 @@ print(ez.uuid())  # Prints something like "A5_H2ka4f33S"
 ### Shushes stdout and stderr
 
 ```python
-with ez.shush():
+with ez.Shush():
     print('This will not print.')
 ```
 

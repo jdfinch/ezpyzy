@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import abc
+import ast
 import io
 import json
 import csv
 import pickle
 import ezpyzy.file
+import ezpyzy.pyr as pyon
 import typing as T
 
 
@@ -113,9 +115,10 @@ class JSON(Savable):
             obj = vars(self)
         return json.dumps(obj, *args, **kwargs)
 
+
 class CSV(Savable):
 
-    extensions = ['csv', 'tsv']
+    extensions = ['csv',]
 
     @classmethod
     def deserialize(cls, string, *args, **kwargs):
@@ -142,3 +145,387 @@ class Pickle(Savable):
     def serialize(self: ..., *args, **kwargs):
         return pickle.dumps(self, *args, **kwargs)
 
+
+class Pyr(Savable):
+
+    extension = ['pyr']
+
+    @classmethod
+    def deserialize(cls, string):
+        obj = pyon.PyrDecoder().decode(string)
+        assert isinstance(obj, cls), f"Pyr object is not of the expected type: {cls}"
+        return obj
+
+    def serialize(self: ..., *args, **kwargs):
+        return pyon.PyrEncoder().encode(self)
+
+
+class _EmptySetTransformer(ast.NodeTransformer):
+    def visit_Call(self, node):
+        if isinstance(node.func, ast.Name) and node.func.id == 'set' and not node.args:
+            return ast.Set(elts=[], ctx=ast.Load())
+        else:
+            return node
+_empty_set_transformer = _EmptySetTransformer()
+
+class PYON(Savable):
+    extension = ['pyon']
+
+    @classmethod
+    def deserialize(cls, string):
+        tree = ast.parse(string, mode='eval')
+        transformed = _empty_set_transformer.visit(tree)
+        return ast.literal_eval(transformed)
+
+    def serialize(self: ..., *args, **kwargs):
+        serialized = repr(self)
+        PYON.deserialize(serialized)
+        return serialized
+
+
+_forbidden_raw_chars = set('\n\t')
+
+class PON(Savable):
+    extension = ['pon']
+
+    @classmethod
+    def deserialize(cls, string):
+        try:
+            tree = ast.parse(string, mode='eval')
+            transformed = _empty_set_transformer.visit(tree)
+            return ast.literal_eval(transformed)
+        except Exception:
+            return string
+
+    def serialize(self: ..., *args, **kwargs):
+        if isinstance(self, str) and not set(self) & _forbidden_raw_chars:
+            try:
+                ast.parse(self, mode='eval')
+                transformed = _empty_set_transformer.visit(ast.parse(self, mode='eval'))
+                ast.literal_eval(transformed)
+            except (SyntaxError, ValueError):
+                return self
+        return repr(self)
+
+
+class TSV(Savable):
+
+    extensions = ['tsv',]
+
+    @classmethod
+    def deserialize(cls, string):
+        return [[PON.deserialize(cell) for cell in row.split('\t')] for row in string.split('\n') if row]
+
+    def serialize(self: ..., *args, **kwargs):
+        return '\n'.join('\t'.join(PON.serialize(cell) for cell in row) for row in self)
+
+
+
+if __name__ == '__main__':
+
+    from ezpyzy.timer import Timer
+
+    def get_cells(s):
+        cells = [[cell for cell in row.split('\t')] for row in s.split('\n')]
+        return cells
+
+    def scan_cells(table):
+        for i, row in enumerate(table):
+            for j, cell in enumerate(row):
+                if not cell or cell[0] not in '\'"[({0123456789-' and cell not in {'True', 'False', 'None'}:
+                    table[i][j] = repr(cell)
+
+    def big_literal_parse(table):
+        big_literal = ''.join(('[', ','.join((''.join(('[', ','.join(row), ']'))) for row in table), ']'))
+        big_parse = ast.literal_eval(big_literal)
+        return big_parse
+
+
+    def pon_parse(s):
+        rows = [[]]
+        stack = [['', []]]
+        lastchar = ''
+        for ch in s:
+            context, item = stack[-1]
+            if context == '':  # root context
+                if ch == '"':
+                    stack.append(['"str', []])
+                elif ch == "'":
+                    stack.append(["'str", []])
+                elif ch == '[':
+                    stack.append(['list', []])
+                elif ch == '{':
+                    stack.append(['dict|set', []])
+                elif ch == '(':
+                    stack.append(['tuple', []])
+                elif ch in '0123456789-':
+                    stack.append(['number', [ch]])
+                elif ch == '\t':
+                    if stack[-1][1]:
+                        rows[-1].append(stack[-1][1][-1])
+                        stack[-1][1] = []
+                    else:
+                        rows[-1].append(None)
+                elif ch == '\n':
+                    if stack[-1][1]:
+                        rows[-1].append(stack[-1][1][-1])
+                        stack[-1][1] = []
+                    rows.append([])
+                else:
+                    stack.append(['text', [ch]])
+            elif context == 'text':
+                if ch == '\t':
+                    stack.pop()
+                    item = ''.join(item)
+                    if item[:5] in {'True', 'False', 'None', 'set()'}:
+                        if item == 'set()':
+                            item = set()
+                        else:
+                            item = {'True': True, 'False': False, 'None': None}.get(item, item)
+                    rows[-1].append(item)
+                elif ch == '\n':
+                    stack.pop()
+                    item = ''.join(item)
+                    if item[:5] in {'True', 'False', 'None', 'set()'}:
+                        if item == 'set()':
+                            item = set()
+                        else:
+                            item = {'True': True, 'False': False, 'None': None}.get(item, item)
+                    rows[-1].append(item)
+                    rows.append([])
+                elif len(stack) > 2 and ch in 'e)':
+                    item.append(ch)
+                    stack.pop()
+                    item = ''.join(item)
+                    if item[:5] in {'True', 'False', 'None', 'set()'}:
+                        if item == 'set()':
+                            item = set()
+                        else:
+                            item = {'True': True, 'False': False, 'None': None}[item]
+                    stack[-1][1].append(item)
+                else:
+                    item.append(ch)
+            elif context == '"str':
+                if ch == '"' and lastchar != '\\':
+                    stack.pop()
+                    item = ''.join(item)
+                    stack[-1][1].append(item)
+                elif lastchar == '\\':
+                    if ch == 'n':
+                        item.append('\n')
+                    elif ch == 't':
+                        item.append('\t')
+                    elif ch == 'r':
+                        item.append('\r')
+                    elif ch == 'b':
+                        item.append('\b')
+                    elif ch == 'f':
+                        item.append('\f')
+                    elif ch == '\\':
+                        item.append('\\')
+                    else:
+                        raise ValueError(f'Invalid escape sequence: {ch}')
+                elif ch == '\\':
+                    pass
+                else:
+                    item.append(ch)
+            elif context == "'str":
+                if ch == "'" and lastchar != '\\':
+                    stack.pop()
+                    item = ''.join(item)
+                    stack[-1][1].append(item)
+                elif lastchar == '\\':
+                    if ch == 'n':
+                        item.append('\n')
+                    elif ch == 't':
+                        item.append('\t')
+                    elif ch == 'r':
+                        item.append('\r')
+                    elif ch == 'b':
+                        item.append('\b')
+                    elif ch == 'f':
+                        item.append('\f')
+                    elif ch == '\\':
+                        item.append('\\')
+                    else:
+                        raise ValueError(f'Invalid escape sequence: {ch}')
+                elif ch == '\\':
+                    pass
+                else:
+                    item.append(ch)
+            elif context == 'number':
+                if ch in '0123456789-.eE_':
+                    item.append(ch)
+                elif ch == ',':
+                    stack.pop()
+                    item = ''.join(item)
+                    item = float(item) if '.' in item else int(item)
+                    stack[-1][1].append(item)
+                elif ch == '\t':
+                    stack.pop()
+                    item = ''.join(item)
+                    item = float(item) if '.' in item else int(item)
+                    rows[-1].append(item)
+                elif ch == '\n':
+                    stack.pop()
+                    item = ''.join(item)
+                    item = float(item) if '.' in item else int(item)
+                    rows[-1].append(item)
+                    rows.append([])
+            elif context == 'list':
+                if ch == ']':
+                    stack.pop()
+                    stack[-1][1].append(item)
+                elif ch == ',':
+                    pass
+                elif ch == '"':
+                    stack.append(['"str', []])
+                elif ch == "'":
+                    stack.append(["'str", []])
+                elif ch == '[':
+                    stack.append(['list', []])
+                elif ch == '{':
+                    stack.append(['dict|set', []])
+                elif ch == '(':
+                    stack.append(['tuple', []])
+                elif ch in '0123456789-':
+                    stack.append(['number', [ch]])
+                else:
+                    stack.append(['text', [ch]])
+            elif context == 'tuple':
+                if ch == ')':
+                    stack.pop()
+                    stack[-1][1].append(tuple(item))
+                elif ch == ',':
+                    pass
+                elif ch == '"':
+                    stack.append(['"str', []])
+                elif ch == "'":
+                    stack.append(["'str", []])
+                elif ch == '[':
+                    stack.append(['list', []])
+                elif ch == '{':
+                    stack.append(['dict|set', []])
+                elif ch == '(':
+                    stack.append(['tuple', []])
+                elif ch in '0123456789-':
+                    stack.append(['number', [ch]])
+                else:
+                    stack.append(['text', [ch]])
+            elif context == 'dict|set':
+                if ch == '}':
+                    stack.pop()
+                    stack[-1][1].append(set(item) if item else {})
+                elif ch == ',':
+                    pass
+                elif ch == ':':
+                    stack[-1][0] = 'dict'
+                elif ch == '"':
+                    stack.append(['"str', []])
+                elif ch == "'":
+                    stack.append(["'str", []])
+                elif ch == '[':
+                    stack.append(['list', []])
+                elif ch == '{':
+                    stack.append(['dict|set', []])
+                elif ch == '(':
+                    stack.append(['tuple', []])
+                elif ch in '0123456789-':
+                    stack.append(['number', [ch]])
+                else:
+                    stack.append(['text', [ch]])
+            elif context == 'dict':
+                if ch == '}':
+                    stack.pop()
+                    stack[-1][1].append(dict(zip(item[::2], item[1::2])))
+                elif ch == ',':
+                    pass
+                elif ch == '"':
+                    stack.append(['"str', []])
+                elif ch == "'":
+                    stack.append(["'str", []])
+                elif ch == '[':
+                    stack.append(['list', []])
+                elif ch == '{':
+                    stack.append(['dict|set', []])
+                elif ch == '(':
+                    stack.append(['tuple', []])
+                elif ch in '0123456789-':
+                    stack.append(['number', [ch]])
+                else:
+                    stack.append(['text', [ch]])
+            elif context == 'set':
+                if ch == '}':
+                    stack.pop()
+                    stack[-1][1].append(set(item))
+                elif ch == ',':
+                    pass
+                elif ch == '"':
+                    stack.append(['"str', []])
+                elif ch == "'":
+                    stack.append(["'str", []])
+                elif ch == '[':
+                    stack.append(['list', []])
+                elif ch == '{':
+                    stack.append(['dict|set', []])
+                elif ch == '(':
+                    stack.append(['tuple', []])
+                elif ch in '0123456789-':
+                    stack.append(['number', [ch]])
+                else:
+                    stack.append(['text', [ch]])
+            lastchar = ch
+        return rows
+
+
+
+    def main():
+
+        table = [
+            ['Column A', 'colB', 'C.o.l, C', 'Col\tD'],
+            ['abc', None, 5, 'This is a test.'],
+            ['X\tY', 'W\nZ', 'True', True],
+            ['!!!', -9.21, 8e12, [1, 2, 3]],
+            [set(), ('a', 'b',), {}, {1: {'a', 'b'}, 2: (), 3: [1, 2]}]
+        ] * int(1)
+
+        serialized = TSV.serialize(table)
+        # print(f'{type(serialized).__name__} {serialized = }')
+
+        with Timer('Fast custom parser...'):
+            rows = pon_parse(serialized)
+
+        print('hello')
+
+        with Timer('Deserializing PON...'):
+            deserialized = TSV.deserialize(serialized)
+        # print('\n\n')
+        # print(f'{type(deserialized).__name__} {deserialized = }')
+        # print('\n\n')
+        # print(f'{type(deserialized[4][3][1]).__name__ = }')
+
+        # with Timer('Fast Deserialize PON...'):
+        #     with Timer('Parsing cells...'):
+        #         cells = get_cells(serialized)
+        #     with Timer('Scanning cells...'):
+        #         scan_cells(cells)
+        #     with Timer('Big literal parse...'):
+        #         deserialized = big_literal_parse(cells)
+
+
+
+        json_table = [
+            ['"Column A"', '"colB"', '"C.o.l, C"', '"Col\tD"'],
+            ['"abc"', 'null', '5', '"This is a test."'],
+            ['"X\tY"', '"W\nZ"', '"True"', 'true'],
+            ['"!!!"', '-9.21', '8e12', '[1, 2, 3]'],
+            ['[]', '("a", "b",)', '{}', '{"1": ["a", "b"], "2": (), "3": [1, 2]}']
+        ] * int(10e4)
+
+        serialized = '\n'.join('\t'.join(json.dumps(cell) for cell in row) for row in json_table)
+
+        with Timer('Deserializing JSON...'):
+            deserialized = TSV.deserialize(serialized)
+
+
+    main()
