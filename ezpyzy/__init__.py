@@ -19,6 +19,7 @@ from ezpyzy.expydite import explore
 from ezpyzy.file import File, filelike
 from ezpyzy.format import Savable, Text, CSV, JSON, Bytes, Pickle, TSV, Pyr, formatlike
 from ezpyzy.get_import_path import get_import_path
+from ezpyzy.job_queue import JobQueue
 from ezpyzy.multiprocess import multiprocess
 from ezpyzy.peek import peek
 from dataclasses import replace as copy # noqa

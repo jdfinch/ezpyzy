@@ -1,5 +1,5 @@
 """
-Time things with a context manager. Nice display of time elapsed.
+Time things with a context manager. Nice display of time_to_wait_s elapsed.
 """
 
 from __future__ import annotations
