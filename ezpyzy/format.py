@@ -7,6 +7,7 @@ import io
 import json
 import csv
 import pickle
+import pathlib as pl
 import ezpyzy.file
 import ezpyzy.pyr as pyon
 import typing as T
@@ -61,12 +62,18 @@ class Savable(Format, abc.ABC, metaclass=SavableMeta):
     def serialize(self: ...): pass
 
     def save(self: ..., path):
-        file = ezpyzy.file.File(path, format=type(self))
+        if isinstance(self, Savable):
+            format = type(self)
+        elif pl.Path(path).suffix in formats:
+            format = formats[pl.Path(path).suffix]
+        else:
+            raise ValueError(f"Could not determine format to save object {self} at path {path}")
+        file = ezpyzy.file.File(path, format=format)
         file.save(self)
 
     @classmethod
     def load(cls, file):
-        file = file.File(file, format=cls)
+        file = ezpyzy.file.File(file, format=cls)
         obj = file.load()
         return obj
 
