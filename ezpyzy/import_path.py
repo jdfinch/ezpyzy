@@ -12,7 +12,7 @@ def get_import_path(cls_or_fn):
     import_path = '.'.join((*path.parts[:-1], path.stem, name))
     return import_path
 
-def import_from_path(import_path):
+def import_obj_from_path(import_path):
     module, name = import_path.rsplit('.', 1)
     main_module_path = pl.Path(sys.modules['__main__'].__file__)
     cwd = pl.Path.cwd()

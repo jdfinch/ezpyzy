@@ -155,7 +155,7 @@ class Parse:
                             if self.node is None:
                                 return None
                         else: break
-                    else: # advance sequence
+                    else: # advance token_ids
                         self.node.children.pop()
                         while True:
                             self.node.index += 1
@@ -178,7 +178,7 @@ if __name__ == '__main__':
 
     expression = Grammar('expression')
     parenthetical = Grammar('parenthetical')
-    sequence = Grammar('sequence')
+    sequence = Grammar('token_ids')
     value = Grammar('value', [Pattern(r'[^()\[\],]+')])
 
     expression.options.extend((

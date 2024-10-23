@@ -9,7 +9,7 @@ from ezpyzy.batch import batching, batched
 from ezpyzy.bind import bind
 from ezpyzy.cache import cache
 from ezpyzy.cat import cat
-from ezpyzy.config import config, take_defaults_from_self, Config, default
+from ezpyzy.config import config, take_defaults_from_self, Config, ImmutableConfig, default
 from ezpyzy.test import test, Tests, Test, tests, test_groups
 from contextlib import nullcontext as collapsable # noqa
 from ezpyzy.debugging import debugging
@@ -17,7 +17,7 @@ from ezpyzy.denominate import denominate
 from ezpyzy.expydite import explore
 from ezpyzy.file import File, filelike
 from ezpyzy.format import Savable, Text, CSV, JSON, Bytes, Pickle, TSPy, Pyr, formatlike
-from ezpyzy.import_path import get_import_path, import_from_path
+from ezpyzy.import_path import get_import_path, import_obj_from_path
 from ezpyzy.multiprocess import multiprocess
 from ezpyzy.peek import peek
 from dataclasses import replace as copy # noqa

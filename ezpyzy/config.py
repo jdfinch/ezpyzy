@@ -11,6 +11,7 @@ import copy as cp
 import sys
 
 from ezpyzy.setter import setters
+from ezpyzy.import_path import get_import_path, import_obj_from_path
 
 import typing as T
 
@@ -52,6 +53,7 @@ def config(cls=None, **kwargs):
     init = getattr(cls, '__init__', lambda self: None)
     init_sig = ins.signature(init)
     def __init__(self, *args, **kwargs):
+        self.__dict__['__mutable__'] = True
         # self.defaults = {
         #     **{p.name: p.default for p in init_sig.parameters.values() if p.default is not p.empty},
         #     **{f.name: f.default for f in dc.fields(cls) if f.default is not dc.MISSING},
@@ -60,10 +62,10 @@ def config(cls=None, **kwargs):
         bound = init_sig.bind(self, *args, **kwargs).arguments
         self.args = Arguments(self, {k: v for i, (k, v) in enumerate(bound.items()) if i})
         self.undefined = {f.name for f in dc.fields(cls) if f.name not in self.args}
-
         init(self, *args, **kwargs) # noqa
         del self.args
         # del self.defaults
+        del self.__mutable__
     cls.__init__ = __init__
     return cls
 
@@ -92,7 +94,7 @@ class ConfigJSONDecoder(json.JSONDecoder):
 
     def object_hook(self, obj):
         if '__class__' in obj:
-            cls = getattr(self.module, obj.pop('__class__'))
+            cls = import_obj_from_path(obj.pop('__class__'))
             fields = {field.name for field in dc.fields(cls)}
             config = cls(**{var: val for var, val in obj.items() if var in fields})
             self.configs.setdefault(cls, []).append(config)
@@ -108,8 +110,9 @@ class ConfigJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, Config):
             json = {field.name: getattr(obj, field.name) for field in dc.fields(obj)}
-            json['__class__'] = obj.__class__.__name__
-            getattr(self.module, obj.__class__.__name__)
+            json['__class__'] = get_import_path(obj.__class__)
+            imported_cls = import_obj_from_path(json['__class__'])
+            assert imported_cls is obj.__class__
             return json
         else:
             return super().default(obj)
@@ -121,6 +124,7 @@ class Config:
     base: str | pl.Path | Config | None = None
     args: T.ClassVar[Arguments[str, T.Any]]
     undefined: T.ClassVar[set[str]]
+    __mutable__ = True
     # defaults: T.ClassVar[dict[str, T.Any]]
 
     def __post_init__(self):
@@ -212,6 +216,18 @@ class Config:
             raise ValueError('No path provided and no base path found for saving config.')
         path.write_text(serialized)
         return serialized
+
+
+@config
+@dc.dataclass
+class ImmutableConfig(Config):
+    __mutable__ = False
+
+    def __setattr__(self, key, value):
+        if not getattr(self, '__mutable__', True):
+            raise AttributeError(f'ImmutableConfig {self} is immutable.')
+        super().__setattr__(key, value)
+
 
 
 def default(x) -> ...:
