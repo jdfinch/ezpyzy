@@ -7,11 +7,41 @@ from dataclasses import dataclass
 import inspect as ins
 import functools as ft
 import pathlib as pl
+import copy as cp
 import sys
 
 from ezpyzy.setter import setters
 
 import typing as T
+
+
+class Arguments:
+    def __init__(self, obj, args):
+        self.__obj__ = obj
+        self.__args__ = args
+    def __iter__(self):
+        return iter(self.__args__)
+    def __getitem__(self, item):
+        return self.__args__[item]
+    def __len__(self):
+        return len(self.__args__)
+    def __contains__(self, item):
+        return item in self.__args__
+    def __getattr__(self, item):
+        return getattr(self.__obj__, item)
+    def __setattr__(self, key, value):
+        if key in ('__obj__', '__args__'):
+            object.__setattr__(self, key, value)
+        else:
+            setattr(self.__obj__, key, value)
+            self.__setattr__(key, value)
+            self.__obj__.undefined.discard(key)
+    def __str__(self):
+        return f"Arguments({self.__args__})"
+    def __repr__(self):
+        return str(self)
+
+
 
 
 def config(cls=None, **kwargs):
@@ -28,8 +58,9 @@ def config(cls=None, **kwargs):
         #     **{f.name: f.default_factory() for f in dc.fields(cls) if f.default_factory is not dc.MISSING},
         # }
         bound = init_sig.bind(self, *args, **kwargs).arguments
-        self.args = {k: v for i, (k, v) in enumerate(bound.items()) if i}
+        self.args = Arguments(self, {k: v for i, (k, v) in enumerate(bound.items()) if i})
         self.undefined = {f.name for f in dc.fields(cls) if f.name not in self.args}
+
         init(self, *args, **kwargs) # noqa
         del self.args
         # del self.defaults
@@ -87,14 +118,14 @@ class ConfigJSONEncoder(json.JSONEncoder):
 @config
 @dc.dataclass
 class Config:
-    config: str | pl.Path | Config | None = None
-    args: T.ClassVar[dict[str, T.Any]]
+    base: str | pl.Path | Config | None = None
+    args: T.ClassVar[Arguments[str, T.Any]]
     undefined: T.ClassVar[set[str]]
     # defaults: T.ClassVar[dict[str, T.Any]]
 
     def __post_init__(self):
-        if 'config' in self.args and (config_arg := self.args.pop('config')) is not None:
-            self.config = None
+        if 'base' in self.args and (config_arg := self.args.pop('base')) is not None:
+            self.base = None
             serialized = None
             serialized_subpath = None
             if not hasattr(self, 'undefined'):
@@ -110,12 +141,12 @@ class Config:
                     if config_arg.is_dir():
                         config_arg = config_arg / 'config.json'
                         if not config_arg.exists():
-                            raise ValueError(f'config is a directory that does not contain a config.json: {config_arg}')
+                            raise ValueError(f'base is a directory that does not contain a config.json: {config_arg}')
                     serialized = config_arg.read_text()
-                    self.config = str(config_arg)
-                    self.undefined.discard('config')
+                    self.base = str(config_arg)
+                    self.undefined.discard('base')
                 else:
-                    raise ValueError(f'config is not a path that exists: {config_arg}')
+                    raise ValueError(f'base is not a path that exists: {config_arg}')
             if serialized is not None:
                 decoder = ConfigJSONDecoder(module=sys.modules[self.__class__.__module__])
                 branch = decoder.decode(serialized)
@@ -145,29 +176,51 @@ class Config:
                 base_val = config_base[var]
                 if var in self.undefined:
                     if isinstance(self_val, Config):
-                        self_val.config = base_val
+                        self_val.base = base_val
                         self_val.args = dict(config=base_val) # noqa
                         self_val.__post_init__()
                         del self_val.args
                     else:
                         setattr(self, var, base_val)
                 elif isinstance(self_val, Config):
-                    self_val.config = base_val
+                    self_val.base = base_val
                     self_val.args = dict(config=base_val)  # noqa
                     self_val.__post_init__()
                     del self_val.args
         else:
             self.undefined = {f.name for f in dc.fields(self) if f.name not in self.args}  # noqa
 
-    def save(self, path:str|pl.Path=None, indent:int|None=2):
+    def dict(self):
+        module = self.__class__.__module__
+        encoder = ConfigJSONEncoder(module=sys.modules[module])
+        serialized = encoder.default(self)
+        return serialized
+
+    def json(self, indent=2):
         module = self.__class__.__module__
         encoder = ConfigJSONEncoder(module=sys.modules[module], indent=indent)
         serialized = encoder.encode(self)
-        if path is not None:
-            path = pl.Path(path).expanduser()
-            path.write_text(serialized)
         return serialized
 
+    def save(self, path:str|pl.Path=None, indent:int|None=2):
+        serialized = self.json(indent=indent)
+        if path is not None:
+            path = pl.Path(path).expanduser()
+        elif self.base:
+            path = pl.Path(self.base)
+        else:
+            raise ValueError('No path provided and no base path found for saving config.')
+        path.write_text(serialized)
+        return serialized
+
+
+def default(x) -> ...:
+    if callable(x) and getattr(x, '__name__', None) == "<lambda>":
+        return dc.field(default_factory=x)
+    else:
+        # if isinstance(x, Config):
+        #     x.undefined = {f.name for f in dc.fields(x)} # noqa
+        return dc.field(default_factory=ft.partial(cp.deepcopy, x))
 
 
 

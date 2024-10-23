@@ -145,6 +145,8 @@ class File(T.Generic[D]):
             serialized = self.read()
             data = format.deserialize(serialized)
             return data
+        else:
+            raise FileNotFoundError(f"File {self._path} does not exist")
 
     def pull(self, format: ezpyzy.format.formatlike = None):
         if format is not None:
