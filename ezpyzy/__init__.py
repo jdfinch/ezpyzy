@@ -16,6 +16,7 @@ from ezpyzy.debugging import debugging
 from ezpyzy.denominate import denominate
 from ezpyzy.expydite import explore
 from ezpyzy.file import File, filelike
+from ezpyzy.job_queue import JobQueue
 from ezpyzy.format import Savable, Text, CSV, JSON, Bytes, Pickle, TSPy, Pyr, formatlike
 from ezpyzy.import_path import get_import_path, import_obj_from_path
 from ezpyzy.multiprocess import multiprocess

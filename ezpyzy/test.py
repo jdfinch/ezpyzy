@@ -91,7 +91,7 @@ class Test:
             and isinstance(exc_type, type)
             and issubclass(exc_type, self.raises)
         ):
-            print(f"  {ansi.foreground_green}✓{ansi.reset} {time}\n", )  # (self.width - len(time) - 6) * '=')
+            print(f"  {ansi.foreground_green}✓{ansi.reset} {time}\n", )  # (self.width - len(time_to_wait_s) - 6) * '=')
             self.result = 'pass'
         elif self.raises is not None and (not isinstance(exc_type, type) or not issubclass(exc_type, self.raises)):
             if self.show:
@@ -106,7 +106,7 @@ class Test:
                 error_message = tb.format_exc()
                 print(error_message, end='')
                 print(ansi.reset, end='')
-            print(f"  {ansi.foreground_red}✗{ansi.reset} {time}\n",) # (self.width - len(time) - 6) * '=')
+            print(f"  {ansi.foreground_red}✗{ansi.reset} {time}\n",) # (self.width - len(time_to_wait_s) - 6) * '=')
             self.result = exc_type
         return True if not self.crash else bool(self.result == 'pass')
 
