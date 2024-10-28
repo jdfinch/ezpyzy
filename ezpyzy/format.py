@@ -10,6 +10,7 @@ import pickle
 import pathlib as pl
 import ezpyzy.file
 import ezpyzy.pyr as pyon
+import ezpyzy.shush as ezshh
 import typing as T
 
 
@@ -41,13 +42,12 @@ class SavableMeta(abc.ABCMeta):
         extensions = getattr(cls, 'extensions', None)
         super_extensions = getattr(super(cls, cls), 'extensions', None)
         if extensions is super_extensions:
-            formats[f'.{name.lower()}'] = cls
+            formats[f'.{name.lower()}'] = cls # noqa
         else:
             formats.update({
                 f'.{ext}' if not ext.startswith('.') else ext: cls
                 for ext in cls.extensions
             })
-
 
 
 class Savable(Format, abc.ABC, metaclass=SavableMeta):
@@ -201,18 +201,20 @@ class PyLS(Savable):
     @classmethod
     def deserialize(cls, string):
         try:
-            tree = ast.parse(string, mode='eval')
-            transformed = _empty_set_transformer.visit(tree)
-            return ast.literal_eval(transformed)
+            with ezshh.shush:
+                tree = ast.parse(string, mode='eval')
+                transformed = _empty_set_transformer.visit(tree)
+                return ast.literal_eval(transformed)
         except Exception:
             return string
 
     def serialize(self: ..., *args, **kwargs):
         if isinstance(self, str) and not set(self) & _forbidden_raw_chars:
             try:
-                ast.parse(self, mode='eval')
-                transformed = _empty_set_transformer.visit(ast.parse(self, mode='eval'))
-                ast.literal_eval(transformed)
+                with ezshh.shush:
+                    ast.parse(self, mode='eval')
+                    transformed = _empty_set_transformer.visit(ast.parse(self, mode='eval'))
+                    ast.literal_eval(transformed)
             except (SyntaxError, ValueError):
                 return self
         return repr(self)
