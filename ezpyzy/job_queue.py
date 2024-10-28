@@ -9,15 +9,16 @@ class JobQueue:
         self.active_jobs = 0
         self.extend(jobs)
 
+    async def run_job_and_put_result(self, job):
+        result = await job
+        self.results.put_nowait(result)
+        self.active_jobs -= 1
+
     def extend(self, jobs):
         for job in jobs:
             if asyncio.iscoroutine(job):
-                async def run_job_and_put_result():
-                    result = await job
-                    self.results.put_nowait(result)
-                    self.active_jobs -= 1
                 self.active_jobs += 1
-                self.loop.create_task(run_job_and_put_result())
+                self.loop.create_task(self.run_job_and_put_result(job))
             else:
                 self.results.put_nowait(job)
         return self
@@ -29,7 +30,8 @@ class JobQueue:
         if not self.results.empty():
             return self.results.get_nowait()
         elif self.active_jobs:
-            return self.loop.run_until_complete(self.results.get())
+            item = self.loop.run_until_complete(self.results.get())
+            return item
         else:
             raise StopIteration
 
