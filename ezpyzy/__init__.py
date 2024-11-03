@@ -16,17 +16,20 @@ from ezpyzy.debugging import debugging
 from ezpyzy.denominate import denominate
 from ezpyzy.expydite import explore
 from ezpyzy.file import File, filelike
-from ezpyzy.job_queue import JobQueue
+from ezpyzy.group import group
 from ezpyzy.format import Savable, Text, CSV, JSON, Bytes, Pickle, TSPy, Pyr, formatlike
 from ezpyzy.import_path import get_import_path, import_obj_from_path
+from ezpyzy.job_queue import JobQueue
 from ezpyzy.multiprocess import multiprocess
 from ezpyzy.peek import peek
 from dataclasses import replace as copy # noqa
 from ezpyzy.scope import Scope
+from ezpyzy.select import select
 from ezpyzy.send_email import send_email as email
 from ezpyzy.short_uuid import short_uuid as uuid
 from ezpyzy.shush import shush
 from ezpyzy.singleton import Singleton, SingletonMeta
+from ezpyzy.sort import sort
 from ezpyzy.subproc import subproc
 from ezpyzy.timer import Timer
 from ezpyzy.table import Table, Row, Column, Col
