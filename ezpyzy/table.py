@@ -68,7 +68,7 @@ class Column(T.Generic[ColumnCellType, ColumnTableType]):
         return cp.copy(self)
 
     def __row_view_init__(self) -> Column[ColumnCellType, ColumnTableType]:
-        return RowViewColumn[ColumnCellType, ColumnTableType](name=self.__name__)
+        return RowViewColumn[ColumnCellType, ColumnTableType](name=self.__name__, original=self)
 
     def __model_init__(self) -> Column[ColumnCellType, ColumnTableType]:
         return cp.deepcopy(self)
@@ -749,7 +749,7 @@ if __name__ == '__main__':
         for duck in ducks:
             duck.quack()
         for children in ducks.children:
-            ...
+            children.append('Donald')
 
         the_duck = Duck('Donald', 5, ['Huey', 'Dewey', 'Louie'])
         x = the_duck[3:3]
@@ -762,9 +762,11 @@ if __name__ == '__main__':
         specific_ducks = ducks[all, 3, 2]
         duck_column = ducks[ducks.name]
 
+        certain_ducks = (x:=specific_ducks)[x.age, x.children, x.name]
+
         second_col = ducks()[1:2]
 
-        names = ducks.name
+        names = ducks.name().table
         ages = ducks.age
         names_and_ages = names - ages
         names_of_naa = names_and_ages.name

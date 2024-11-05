@@ -7,7 +7,7 @@ import sys
 import importlib as imp
 import itertools as it
 from ezpyzy.alphanumeral import alphanumeral
-from ezpyzy.import_path import get_import_path, import_from_path
+from ezpyzy.import_path import get_import_path, import_obj_from_path
 
 
 prefix = '~@&MW|'
@@ -127,7 +127,7 @@ class PyrDecoder:
         if t in self.types:
             t = self.types[t]
         else:
-            t = self.types.setdefault(t, import_from_path(t[1:]))
+            t = self.types.setdefault(t, import_obj_from_path(t[1:]))
         if isinstance(t, type):
             o = object.__new__(t) # noqa
         else:

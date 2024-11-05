@@ -6,7 +6,7 @@ def foo(x: str, y:list):
     return x + repr(y)
 
 
-P = T.ParamSpec('P')
+P = T.ParamSpec('TR')
 F = T.TypeVar('F')
 
 def decorator(f: F) -> F|T.Callable[..., list[str]]:
