@@ -1,10 +1,11 @@
 
+import copy as cp
 
 
 def cat(*sequences):
     assert sequences
     if len(sequences) == 1:
-        return sequences[0]
+        return cp.copy(sequences[0])
     concatenated = sequences[0] + sequences[1]
     for sequence in sequences[2:]:
         concatenated += sequence

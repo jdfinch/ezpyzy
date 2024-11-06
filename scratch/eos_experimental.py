@@ -4,19 +4,19 @@ from __future__ import annotations
 import re
 
 
-float_grammar = '(?P<float>' + '|'.join('(?:' + x + ')' for x in [
+float_grammar = '(?TR<float>' + '|'.join('(?:' + x + ')' for x in [
     r'''[+-]?\d+\.\d*(?:[eE][+-]?\d+)?''',
     r'''[+-]?\d*\.\d+(?:[eE][+-]?\d+)?''',
 ]) + ')'
-int_grammar = '(?P<int>' + '|'.join('(?:' + x + ')' for x in [
+int_grammar = '(?TR<int>' + '|'.join('(?:' + x + ')' for x in [
     r'''[+-]?\d+''',
 ]) + ')'
-literal_grammar = '(?P<bool>' + '|'.join('(?:' + x + ')' for x in [
+literal_grammar = '(?TR<bool>' + '|'.join('(?:' + x + ')' for x in [
     r'''True''',
     r'''False''',
     r'''None'''
 ]) + ')'
-str_grammar = '(?P<str>' + '|'.join('(?:' + x + ')' for x in [
+str_grammar = '(?TR<str>' + '|'.join('(?:' + x + ')' for x in [
     r'''"(?:[^"]|\\")*"(?!")''',
     r'''\'(?:[^\']|\\\')*\'(?!')'''
 ]) + ')'

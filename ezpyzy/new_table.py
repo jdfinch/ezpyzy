@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 import typing as T
 
@@ -9,7 +8,9 @@ import re
 from ezpyzy.alphanumeral import alphanumeral
 from ezpyzy.hash import hash
 
+
 def _imports(): pass
+
 
 """
 Primitives:
@@ -23,12 +24,12 @@ del row:        Table.__delitem__       del table[row(s)]       ✓
 
 """
 
+
 def _constants(): pass
+
 
 sentinel = object()
 default = object()
-
-
 
 ''' ============================== Column ============================== '''
 
@@ -68,7 +69,7 @@ class Column(T.Generic[ColumnCellType, ColumnTableType]):
         return cp.copy(self)
 
     def __row_view_init__(self) -> Column[ColumnCellType, ColumnTableType]:
-        return RowViewColumn[ColumnCellType, ColumnTableType](name=self.__name__)
+        return RowViewColumn[ColumnCellType, ColumnTableType](name=self.__name__, original=self)
 
     def __model_init__(self) -> Column[ColumnCellType, ColumnTableType]:
         return cp.deepcopy(self)
@@ -92,9 +93,10 @@ class Column(T.Generic[ColumnCellType, ColumnTableType]):
             return f"<Unattached Column object {self.__name__}>"
         max_items = 5
         if len(self) > max_items:
-            return f"{self.__name__}[{', '.join(repr(x) for x in self[:max_items-2])}, ..., {repr(self[-1])}]"
+            return f"{self.__name__}[{', '.join(repr(x) for x in self[:max_items - 2])}, ..., {repr(self[-1])}]"
         else:
             return f"{self.__name__}[{', '.join(repr(x) for x in self)}]"
+
     __repr__ = __str__
 
     def __iter__(self) -> T.Iterator[ColumnCellType]:
@@ -113,7 +115,9 @@ class Column(T.Generic[ColumnCellType, ColumnTableType]):
             values = (values,)
         elif isinstance(selector, slice):
             indices = tuple(range(*selector.indices(len(self))))
-            assert len(indices) == len(values), f"Cannot set {len(values)} values to {len(indices)} indices selected by {selector} in Column {self} of Table {self.__table__}"
+            assert len(indices) == len(
+                values
+            ), f"Cannot set {len(values)} values to {len(indices)} indices selected by {selector} in Column {self} of Table {self.__table__}"
         elif callable(selector):
             selector = tuple(selector(e) for e in self)
             self[selector] = values
@@ -124,15 +128,21 @@ class Column(T.Generic[ColumnCellType, ColumnTableType]):
             if selector:
                 first = selector[0]
                 if isinstance(first, bool):
-                    assert len(self) == len(selector), f"Boolean selector of length {len(selector)} does not match length {len(self)} of Table {self.__table__}"
+                    assert len(self) == len(
+                        selector
+                    ), f"Boolean selector of length {len(selector)} does not match length {len(self)} of Table {self.__table__}"
                     if len(values) == len(self):
                         indices, values = zip(*((i, v) for i, v in enumerate(values) if selector[i]))
                     else:
                         indices = tuple(i for i, flag in enumerate(selector) if flag)
-                        assert len(indices) == len(values), f"Cannot set {len(values)} values to {len(indices)} indices selected by True in boolean selector for Column {self} of Table {self.__table__}"
+                        assert len(indices) == len(
+                            values
+                        ), f"Cannot set {len(values)} values to {len(indices)} indices selected by True in boolean selector for Column {self} of Table {self.__table__}"
                 elif isinstance(first, int):
                     indices = selector
-                    assert len(indices) == len(values), f"Cannot set {len(values)} values to {len(indices)} indices selected by {selector} in Column {self} of Table {self.__table__}"
+                    assert len(indices) == len(
+                        values
+                    ), f"Cannot set {len(values)} values to {len(indices)} indices selected by {selector} in Column {self} of Table {self.__table__}"
                 else:
                     raise NotImplemented("Custom selectors are not yet implemented")
             else:
@@ -142,7 +152,7 @@ class Column(T.Generic[ColumnCellType, ColumnTableType]):
         else:
             return
 
-    def __insert_data__(self, indices: tuple[int, ...], values: tuple) -> list[int]|None:
+    def __insert_data__(self, indices: tuple[int, ...], values: tuple) -> list[int] | None:
         rows = self.__table__.__rows__
         var = self.__name__
         for index, value in zip(indices, values):
@@ -173,7 +183,7 @@ class Column(T.Generic[ColumnCellType, ColumnTableType]):
         if self.__delete_data__:
             return self.__delete_data__(selection)  # noqa
 
-    def __delete_data__(self, selection: tuple[int, ...]) -> list[int]|None:
+    def __delete_data__(self, selection: tuple[int, ...]) -> list[int] | None:
         """Delete Data"""
         rows = self.__table__.__rows__
         var = self.__name__
@@ -184,7 +194,7 @@ class Column(T.Generic[ColumnCellType, ColumnTableType]):
     __remove_data__: T.Callable[[tuple[int, ...]], list[int] | None] = None
     """Remove rows from Table"""
 
-    __add_data__: T.Callable[[tuple[int, ...]], list[int]|None] = None
+    __add_data__: T.Callable[[tuple[int, ...]], list[int] | None] = None
     """Add rows to Table with existing data"""
 
     def __iadd__(self, other):
@@ -226,14 +236,15 @@ class Column(T.Generic[ColumnCellType, ColumnTableType]):
         """Cartesian Product"""
         return self
 
-
-    def __sub__(self,
-        other: Column[OtherColumnTableType]|OtherTableType
+    def __sub__(
+        self,
+        other: Column[OtherColumnTableType] | OtherTableType
     ) -> ColumnTableType | OtherColumnTableType | OtherTableType:
         """Merge"""
 
 
 ColumnAttrsType = T.TypeVar('ColumnAttrsType', bound=Column)
+
 
 class ColumnAttrs(T.Generic[ColumnAttrsType]):
     def __init__(self, col: ColumnAttrsType):
@@ -251,8 +262,11 @@ class ColumnAttrs(T.Generic[ColumnAttrsType]):
 RowViewColumnCellType = T.TypeVar('RowViewColumnCellType')
 RowViewColumnTableType = T.TypeVar('RowViewColumnTableType')
 
-class RowViewColumn(T.Generic[RowViewColumnCellType, RowViewColumnTableType],
-    Column[RowViewColumnCellType, RowViewColumnTableType]):
+
+class RowViewColumn(
+    T.Generic[RowViewColumnCellType, RowViewColumnTableType],
+    Column[RowViewColumnCellType, RowViewColumnTableType]
+):
 
     def __init__(self, name, original):
         Column.__init__(self, name=name)
@@ -261,7 +275,7 @@ class RowViewColumn(T.Generic[RowViewColumnCellType, RowViewColumnTableType],
     def __row_view_init__(self) -> Column[ColumnCellType, ColumnTableType]:
         return type(self)(name=self.__name__, original=self.__original__)
 
-    ... # todo: route primitive mutations to the original Column
+    ...  # todo: route primitive mutations to the original Column
 
 
 ''' ============================== Table ============================== '''
@@ -275,12 +289,14 @@ class RowViewColumn(T.Generic[RowViewColumnCellType, RowViewColumnTableType],
 5. Copy a Table from an existing Table (transfer rows to copy)
 """
 
+
 class Table:
-    def __init__(self,
+    def __init__(
+        self,
         *rows: T.Iterable[T.Self],
         layout: type[Row] | Table | TableAttrs | dict[str, Column | None] | T.Iterable[Column | str] = None,
-        rowtype = None,
-        cols: Table|dict[str, Column|T.Iterable]|T.Iterable[Column|T.Iterable] = None
+        rowtype=None,
+        cols: Table | dict[str, Column | T.Iterable] | T.Iterable[Column | T.Iterable] = None
     ):
         self.__attrs__: TableAttrs[T.Self] = TableAttrs(self)
         self.__rows__: list[T.Self] = []
@@ -383,7 +399,7 @@ class Table:
     def __getitem__(self, item) -> T.Self:
         """Select"""
         if isinstance(item, int):
-            return  self.__rows__[item]
+            return self.__rows__[item]
         elif isinstance(item, slice):
             return Table(self.__rows__[item], layout=self)
         elif isinstance(item, tuple):
@@ -407,9 +423,12 @@ class Table:
             elif isinstance(item[0], Column):
                 return self[tuple(item)]
             elif isinstance(item[0], bool):
-                assert len(item) == len(self.__rows__), f"Boolean selector must be the same length as Table {self}, got length {len(item)}"
+                assert len(item) == len(
+                    self.__rows__
+                ), f"Boolean selector must be the same length as Table {self}, got length {len(item)}"
                 return Table(
-                    (row for row, select in zip(self.__rows__, item) if select), layout=self())
+                    (row for row, select in zip(self.__rows__, item) if select), layout=self()
+                )
             elif isinstance(item[0], int):
                 return Table((self.__rows__[i] for i in item), layout=self)
             else:
@@ -488,7 +507,9 @@ class Table:
                     return self.__delitem__(rselect)
             first = selector[0]
             if isinstance(first, bool):
-                assert len(self) == len(selector), f"Boolean selector of length {len(selector)} does not match length {len(self)} of Table {self}"
+                assert len(self) == len(
+                    selector
+                ), f"Boolean selector of length {len(selector)} does not match length {len(self)} of Table {self}"
                 indices = tuple(i for i, flag in enumerate(selector) if flag)
                 for column in self():
                     if column.__remove_data__:
@@ -519,7 +540,7 @@ class Table:
         """Cat"""
         if isinstance(other, Row):
             self.__rows__.append(other)
-            indices = (len(self.__rows__)-1,)
+            indices = (len(self.__rows__) - 1,)
             for column in self():
                 if column.__add_data__:
                     column.__add_data__(indices)
@@ -535,7 +556,7 @@ class Table:
                 return self
             first = other[0]
             if isinstance(first, Row):
-                self.__rows__.extend(rows:=other)
+                self.__rows__.extend(rows := other)
             elif isinstance(first, dict):
                 if self.__flexible__:
                     col_names = dict.fromkeys(cname for row in other for cname in row)
@@ -555,15 +576,16 @@ class Table:
                         setattr(row, var, val)
                 self.__rows__.extend(rows)
             else:
-                self.__rows__.extend(rows:=other)
-            indices = tuple(range(len(self), len(self)+len(rows)))
+                self.__rows__.extend(rows := other)
+            indices = tuple(range(len(self), len(self) + len(rows)))
             for column in self():
                 if column.__add_data__:
                     column.__add_data__(indices)
         return self
 
-    def __isub__(self,
-        other: Column|Table|dict[str, Column|T.Iterable]|T.Iterable[Column|T.Iterable]
+    def __isub__(
+        self,
+        other: Column | Table | dict[str, Column | T.Iterable] | T.Iterable[Column | T.Iterable]
     ):
         """Merge"""
         if isinstance(other, Column):
@@ -669,7 +691,8 @@ class Table:
         return self
 
 
-TableAttrsType  = T.TypeVar('TableAttrsType')
+TableAttrsType = T.TypeVar('TableAttrsType')
+
 
 class TableAttrs(T.Generic[TableAttrsType]):
     def __init__(self, tab: TableAttrsType):
@@ -699,15 +722,19 @@ CellType = T.TypeVar('CellType')
 RowType = T.TypeVar('RowType')
 Col = T.Union[Column[CellType, RowType], CellType, None]
 
+
 class RowMeta(type):
     __cols__ = {}
+
     def __new__(mcs, name, bases, attrs):
         bases = tuple(base for base in bases if base is not Table)
         cls = super().__new__(mcs, name, bases, attrs)
         cls.__cols__ = inspect_row_layout(cls)
         return cls
 
+
 col_type_parser = re.compile(r'Col\[([^,]*)')
+
 
 def inspect_row_layout(cls) -> dict[str, Column]:
     fields = {}
@@ -749,7 +776,7 @@ if __name__ == '__main__':
         for duck in ducks:
             duck.quack()
         for children in ducks.children:
-            ...
+            children.append('Donald')
 
         the_duck = Duck('Donald', 5, ['Huey', 'Dewey', 'Louie'])
         x = the_duck[3:3]
@@ -757,19 +784,20 @@ if __name__ == '__main__':
         a_duck = ducks[2]
 
         some_ducks = ducks.__getitem__(slice(1, 4))
-        duck_attrs = ducks[:,3]
-        more_ducks = ducks[:,:]
+        duck_attrs = ducks[:, 3]
+        more_ducks = ducks[:, :]
         specific_ducks = ducks[all, 3, 2]
         duck_column = ducks[ducks.name]
 
+        certain_ducks = (x := specific_ducks)[x.age, x.children, x.name]
+
         second_col = ducks()[1:2]
 
-        names = ducks.name
+        names = ducks.name().table
         ages = ducks.age
         names_and_ages = names - ages
         names_of_naa = names_and_ages.name
 
 
-        
     main()
 

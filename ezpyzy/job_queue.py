@@ -41,39 +41,31 @@ if __name__ == '__main__':
     import random
     import time
 
-    def api(s):
+
+    async def api(s):
         time.sleep(1)
         first_half = s[:len(s) // 2]
         second_half = s[len(s) // 2:]
         waiting_time = random.randint(1, 10)
         print(f'   API call with {s}...')
-        # await asyncio.sleep(waiting_time)
-        time.sleep(waiting_time)
+        request = asyncio.sleep(waiting_time)
+        await request
+        # time.sleep(waiting_time)
         result = [x for x in [first_half, second_half] if len(x) > 1]
         print(f'   API call with {s} got reply {result} in {waiting_time}s')
         return result
 
 
-    class MyWaitPolicy:
-        def __init__(self, time):
-            self.time = time
-        async def wait(self):
-            await asyncio.sleep(self.time)
-        async def __call__(self):
-            await self.wait()
-
-
     def main():
-        loop = JobQueue()
+        queue = JobQueue()
         ti = time.perf_counter()
-        for i, result in enumerate(loop.extend([api('abcdefghijklmnop')])):
+        for i, result in enumerate(queue.extend([api('abcdefghijklmnop')])):
             for subseq in result:
-                loop.extend([api(subseq)])
+                queue.extend([api(subseq)])
         tf = time.perf_counter()
         print(f'batch done in {tf - ti:.2f} seconds')
 
 
-    # asyncio.run(amain())
     main()
 
 
