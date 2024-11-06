@@ -13,6 +13,9 @@ class Shush:
         self.stdout_capture = StringIO()
         self.stderr_capture = StringIO()
 
+    def __call__(self):
+        return self
+
     def __enter__(self):
         sys.stdout = self.stdout_capture
         sys.stderr = self.stderr_capture

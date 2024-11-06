@@ -1,6 +1,8 @@
 
 from __future__ import annotations
 
+import typing as T
+
 import termios
 
 from ezpyzy.alphanumeral import alphanumeral, alphanumerals
@@ -24,12 +26,27 @@ from ezpyzy.peek import peek
 from dataclasses import replace as copy # noqa
 from ezpyzy.scope import Scope
 from ezpyzy.send_email import send_email as email
+from ezpyzy.settings import settings, Settings
 from ezpyzy.short_uuid import short_uuid as uuid
 from ezpyzy.shush import shush
 from ezpyzy.singleton import Singleton, SingletonMeta
 from ezpyzy.subproc import subproc
 from ezpyzy.timer import Timer
-from ezpyzy.table import Table, Row, Column, Col
+
+from ezpyzy.table import Table, Column, IDColumn
+ColStr = T.Union[Column[str], str, None]
+ColInt = T.Union[Column[int], int, None]
+ColBool = T.Union[Column[bool], bool, None]
+ColFloat = T.Union[Column[float], float, None]
+ColObj = T.Union[Column[T.Any], T.Any, None]
+ColID = T.Union[IDColumn[str], str, None]
+
+import dataclasses
+Def: None = lambda x: dataclasses.field(  # noqa
+    default_factory=x
+    if callable(x) and getattr(x, '__name__', None) == "<lambda>"
+    else lambda: x
+)
 
 try:
     from ezpyzy.terminal_environment import TerminalEnvironment
