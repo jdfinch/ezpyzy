@@ -1,5 +1,5 @@
 
-from ezpyzy.config_new import Config, default
+from ezpyzy.config import Config, default
 import ezpyzy as ez
 import dataclasses as dc
 import textwrap as tw
