@@ -14,39 +14,6 @@ from ezpyzy.import_path import get_import_path, import_obj_from_path
 import typing as T
 
 
-class ConfigJSONDecoder(json.JSONDecoder):
-    def __init__(self, module, *args, **kwargs):
-        self.module = module
-        self.configs = {}
-        super().__init__(object_hook=self.object_hook, *args, **kwargs)
-
-    def object_hook(self, obj):
-        if '__class__' in obj:
-            cls = import_obj_from_path(obj.pop('__class__'))
-            fields = {field.name for field in dc.fields(cls)}
-            config = cls(**{var: val for var, val in obj.items() if var in fields})
-            self.configs.setdefault(cls, []).append(config)
-            return config
-        else:
-            return obj
-
-
-class ConfigJSONEncoder(json.JSONEncoder):
-    def __init__(self, module, *args, **kwargs):
-        self.module = module
-        super().__init__(*args, **kwargs)
-
-    def default(self, obj):
-        if isinstance(obj, Config):
-            json = {field.name: getattr(obj, field.name) for field in dc.fields(obj)} # noqa
-            json['__class__'] = get_import_path(obj.__class__)
-            imported_cls = import_obj_from_path(json['__class__'])
-            assert imported_cls is obj.__class__
-            return json
-        else:
-            return super().default(obj)
-
-
 class Configured:
     def __init__(self, object, fields, configured, args):
         self.object: Config = object
@@ -96,8 +63,8 @@ class Configured:
         serialized = self.json(indent=indent)
         if path is not None:
             path = pl.Path(path).expanduser()
-        elif self.base:
-            path = pl.Path(self.base)
+        elif self.object.base:
+            path = pl.Path(self.object.base)
         else:
             raise ValueError('No path provided and no base path found for saving config.')
         path.write_text(serialized)
@@ -326,6 +293,39 @@ E = T.TypeVar('E', bound=Config)
 class Configs(dict[str, E]):
     pass
 
+
+
+class ConfigJSONDecoder(json.JSONDecoder):
+    def __init__(self, module, *args, **kwargs):
+        self.module = module
+        self.configs = {}
+        super().__init__(object_hook=self.object_hook, *args, **kwargs)
+
+    def object_hook(self, obj):
+        if '__class__' in obj:
+            cls = import_obj_from_path(obj.pop('__class__'))
+            fields = {field.name for field in dc.fields(cls)}
+            config = cls(**{var: val for var, val in obj.items() if var in fields})
+            self.configs.setdefault(cls, []).append(config)
+            return config
+        else:
+            return obj
+
+
+class ConfigJSONEncoder(json.JSONEncoder):
+    def __init__(self, module, *args, **kwargs):
+        self.module = module
+        super().__init__(*args, **kwargs)
+
+    def default(self, obj):
+        if isinstance(obj, Config):
+            json = {field.name: getattr(obj, field.name) for field in dc.fields(obj)} # noqa
+            json['__class__'] = get_import_path(obj.__class__)
+            imported_cls = import_obj_from_path(json['__class__'])
+            assert imported_cls is obj.__class__
+            return json
+        else:
+            return super().default(obj)
 
 
 if __name__ == '__main__':
