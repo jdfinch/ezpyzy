@@ -187,7 +187,6 @@ with ez.test("Inherit Nested Config with Overrides"):
     assert my_exp.training.tags == ['training']
     assert my_exp.metrics == ['accuracy']
 
-
 with ez.test("Inherit and Extend Nested Config with Overrides"):
     @dc.dataclass
     class MyExtendedExperiment(Experiment):
