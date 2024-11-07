@@ -60,17 +60,17 @@ class Configured:
         return field in self.configured
     def __iter__(self):
         return iter(self.configured)
-    def __getattr__(self, field: str):
-        return field in self.configured
     def __iadd__(self, field: str):
         if isinstance(getattr(self.object, field), Config):
             pass
         else:
             self.configured[field] = None
+        return self
     def __isub__(self, other):
         self.configured.pop(other, None)
+        return self
     def __setattr__(self, field, value):
-        if field in ('object', 'and_unconfigured', 'configured', 'initialized'):
+        if field in ('object', 'and_unconfigured', 'configured', 'initialized', 'args'):
             super().__setattr__(field, value)
         elif isinstance(getattr(self.object, field), (Config, Configs)):
             pass
@@ -116,21 +116,25 @@ class ConfigMeta(type):
         def __init__(self, *args, **kwargs):
             arguments = init_sig.bind(self, *args, **kwargs).arguments
             self.configured = Configured(object=self, fields=fields,
-                configured={k: v for k, v in arguments.items()
-                if k in fields and v is not inspect.Parameter.empty},
+                configured={k: None for k, v in arguments.items()
+                if k in fields and k != 'base'
+                and v is not inspect.Parameter.empty},
                 args=arguments)
             init(self, *args, **kwargs) # noqa
             self.configured.initialized = True
             self.configured.args = None
         cls.__init__ = __init__
+        for attr, value in attrs.items():
+            setattr(cls, attr, value)
         return cls
 
 
+@dc.dataclass
 class Config(metaclass=ConfigMeta):
     base: str | pl.Path | 'Config' | None = None
 
     def __post_init__(self):
-        if not self.configured.base:
+        if not self.base:
             return
         if isinstance(self.base, str) and self.base.lstrip().startswith('{'):
             '''load base from JSON str'''
@@ -150,11 +154,11 @@ class Config(metaclass=ConfigMeta):
             '''load base from Config instance, JSON dict, or other object'''
             base = self.base
             self.base = None
-        self |= base
+        self += base
 
     def __setattr__(self, key, value):
-        if self.configured:
-            self.configured += key
+        if getattr(self, 'configured', None):
+            self.configured.__iadd__(key)
         return super().__setattr__(key, value)
 
     def __ior__(self, other):
@@ -261,7 +265,7 @@ class Config(metaclass=ConfigMeta):
 
     def __mul__(self, other):
         copy = cp.deepcopy(self)
-        copy += other
+        copy *= other
         return copy
 
     def __iadd__(self, other):

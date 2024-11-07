@@ -1,11 +1,13 @@
 
+from ezpyzy.config_new import Config
 import ezpyzy as ez
 import dataclasses as dc
 
 
 with ez.test("Define Config"):
+
     @dc.dataclass
-    class Training(ez.Config):
+    class Training(Config):
         shuffle: bool = True
         epochs: int = 1
         tags: list[str] = ez.default(['training'])
@@ -31,8 +33,8 @@ with ez.test("Evolve Mutated Config"):
     assert train_config_d.epochs == 3
     assert train_config_d.tags == ['training', 'new']
 
-with ez.test("Merge Configs"):
-    train_config_e = train_config_d | train_config_b
+with ez.test("Merge Configs", crash=True):
+    train_config_e = train_config_d * train_config_b
     assert train_config_e.shuffle == False
     assert train_config_e.epochs == 2
     assert train_config_e.tags == ['training', 'new']
