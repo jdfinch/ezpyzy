@@ -148,9 +148,9 @@ class Config:
             if isinstance(config_arg, pl.Path):
                 if config_arg.exists():
                     if config_arg.is_dir():
-                        config_arg = config_arg / 'config.json_e'
+                        config_arg = config_arg / 'config.json'
                         if not config_arg.exists():
-                            raise ValueError(f'base is a directory that does not contain a config.json_e: {config_arg}')
+                            raise ValueError(f'base is a directory that does not contain a config.json: {config_arg}')
                     serialized = config_arg.read_text()
                     self.base = str(config_arg)
                     self.undefined.discard('base')

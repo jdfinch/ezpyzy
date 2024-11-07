@@ -106,7 +106,7 @@ class Bytes(Savable):
 
 class JSON(Savable):
 
-    extensions = ['json_e', 'jsonl']
+    extensions = ['json', 'jsonl']
 
     @classmethod
     def deserialize(cls, string, *args, **kwargs):
