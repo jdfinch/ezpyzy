@@ -15,13 +15,41 @@ from ezpyzy.import_path import get_import_path, import_obj_from_path
 import typing as T
 
 
+class ConfigFields(dict[str, None]):
+    def __init__(self, object, which_fields_serialization_strategy):
+        dict.__init__(self)
+        self.object = object
+        self._which_fields_serialization_strategy = which_fields_serialization_strategy
+
+    def dict(self):
+        encoder = ConfigJSONEncoder(which=self._which_fields_serialization_strategy)
+        return encoder.default(self.object)
+
+    def json(self, indent=2):
+        encoder = ConfigJSONEncoder(which=self._which_fields_serialization_strategy, indent=indent)
+        return encoder.encode(self.object)
+
+    def save(self, path: str | pl.Path = None, indent: int | None = 2):
+        serialized = self.json(indent=indent)
+        if path is not None:
+            path = pl.Path(path).expanduser()
+        elif self.object.base:
+            path = pl.Path(self.object.base)
+        else:
+            raise ValueError('No path provided and no base path found for saving config.')
+        path.write_text(serialized)
+        return serialized
+
+
 class Configured:
     def __init__(self, object, fields, args):
         self.object: Config = object
-        self.and_unconfigured_and_subconfigs: dict[str, None] = fields
-        self.subconfigs: dict[str, None] = {}
-        self.and_unconfigured: dict[str, None] = {k: None for k in fields if k not in self.subconfigs}
-        self.configured: dict[str, None] = {}
+        self.and_unconfigured_and_subconfigs: ConfigFields[str, None] = ConfigFields(object, 'all')
+        self.and_unconfigured_and_subconfigs.update(fields)
+        self.subconfigs: ConfigFields[str, None] = ConfigFields(object, 'subconfigs')
+        self.and_unconfigured: ConfigFields[str, None] = ConfigFields(object, 'and_unconfigured')
+        self.and_unconfigured.update(fields)
+        self.configured: ConfigFields[str, None] = ConfigFields(object, 'configured')
         self.initialized: bool = False
         self.args: dict[str, T.Any]|None = args
 
@@ -71,13 +99,17 @@ class Configured:
             self.__isub__(field)
 
     @property
-    def and_subconfigs(self):
-        return {k: v for k, v in self.and_unconfigured_and_subconfigs.items()
-            if k in self.subconfigs or k in self.configured}
+    def and_subconfigs(self) -> ConfigFields[str, None]:
+        config_fields = ConfigFields(self.object, 'and_subconfigs')
+        config_fields.update({k: v for k, v in self.and_unconfigured_and_subconfigs.items()
+            if k in self.subconfigs or k in self.configured})
+        return config_fields
 
     @property
-    def unconfigured(self):
-        return {k: v for k, v in self.and_unconfigured.items() if k not in self.configured}
+    def unconfigured(self) -> ConfigFields[str, None]:
+        config_fields = ConfigFields(self.object, 'unconfigured')
+        config_fields.update({k: v for k, v in self.and_unconfigured.items() if k not in self.configured})
+        return config_fields
 
     def dict(self):
         module = sys.modules[self.object.__class__.__module__]
@@ -213,7 +245,7 @@ class Config(metaclass=ConfigMeta):
                 if field in other.configured:
                     setattr(self, field, getattr(other, field))
             for field in self.configured.subconfigs:
-                if field in other.configured:
+                if hasattr(other, field):
                     subconfig = getattr(self, field)
                     value = getattr(other, field)
                     if isinstance(subconfig, Config):
@@ -319,16 +351,22 @@ class ConfigJSONDecoder(json.JSONDecoder):
 
 
 class ConfigJSONEncoder(json.JSONEncoder):
-    def __init__(self, module, *args, **kwargs):
+    def __init__(self, module = None,
+        which: T.LiteralString = "all",
+        *args, **kwargs):
         self.module = module
+        self.which_fields = which
         super().__init__(*args, **kwargs)
 
     def default(self, obj):
         if isinstance(obj, Config):
-            json = {field.name: getattr(obj, field.name) for field in dc.fields(obj)} # noqa
-            json['__class__'] = get_import_path(obj.__class__)
-            imported_cls = import_obj_from_path(json['__class__'])
-            assert imported_cls is obj.__class__
+            which = dict(all='and_unconfigured_and_subconfigs').get(self.which_fields, self.which_fields)
+            fields_to_serialize = getattr(obj.configured, which)
+            json = {field: getattr(obj, field) for field in fields_to_serialize}
+            if self.module is not None and self.which_fields == 'all':
+                json['__class__'] = get_import_path(obj.__class__)
+                imported_cls = import_obj_from_path(json['__class__'])
+                assert imported_cls is obj.__class__
             return json
         else:
             return super().default(obj)

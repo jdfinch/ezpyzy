@@ -2,6 +2,7 @@
 from ezpyzy.config_new import Config, default
 import ezpyzy as ez
 import dataclasses as dc
+import textwrap as tw
 
 
 with ez.test("Define Config"):
@@ -41,7 +42,7 @@ with ez.test("Merge Configs"):
 with ez.test("Serialize Config"):
     json_e = train_config_e.configured.dict()
     assert '__class__' in json_e and 'Training' in json_e.pop('__class__')
-    assert json_e == {'base': None, 'shuffle': False, 'epochs': 2, 'tags': ['training', 'new']}
+    assert json_e == {'shuffle': False, 'epochs': 2, 'tags': ['training', 'new']}
 
 with ez.test("Deserialize JSON"):
     json_e = ez.JSON.serialize(json_e)
@@ -82,6 +83,79 @@ with ez.test("Evolve Nested Config"):
     assert exp_config_b.training.epochs == 5
     assert exp_config_b.training.tags == ['training']
     assert exp_config_b.metrics == ['p', 'r', 'f1']
+
+with ez.test("Serialize All"):
+    serial_all = exp_config_a.configured.json()
+
+with ez.test("Serialize Configured Only, No Subconfigs"):
+    serial_configured = exp_config_a.configured.configured.json()
+    assert serial_configured == tw.dedent('''
+    {
+      "name": "exp1"
+    }
+    ''').strip()
+
+with ez.test("Serialize Configured Only With Subconfigs"):
+    serial_configured_and_subconfigs = exp_config_a.configured.and_subconfigs.json()
+    assert serial_configured_and_subconfigs == tw.dedent('''
+    {
+      "name": "exp1",
+      "training": {
+        "epochs": 5
+      }
+    }
+    ''').strip()
+
+with ez.test("Serialize Configured and Unconfigured, No Subconfigs"):
+    serial_no_subconfigs = exp_config_a.configured.and_unconfigured.json()
+    assert serial_no_subconfigs == tw.dedent('''
+    {
+      "name": "exp1",
+      "metrics": [
+        "accuracy"
+      ]
+    }
+    ''').strip()
+
+with ez.test("Load Configured Only, No Subconfigs"):
+    exp_config_c = Experiment(serial_configured,
+        training=Training(shuffle=False), metrics=['p', 'r', 'f1'])
+    assert exp_config_c.name == 'exp1'
+    assert exp_config_c.training.shuffle == False
+    assert exp_config_c.training.epochs == 1
+    assert exp_config_c.training.tags == ['training']
+    assert exp_config_c.metrics == ['p', 'r', 'f1']
+
+with ez.test("Load Configured Only With Subconfigs"):
+    exp_config_d = Experiment(serial_configured_and_subconfigs,
+        training=Training(shuffle=False), metrics=['p', 'r', 'f1'])
+    assert exp_config_d.name == 'exp1'
+    assert exp_config_d.training.shuffle == False
+    assert exp_config_d.training.epochs == 5
+    assert exp_config_d.training.tags == ['training']
+    assert exp_config_d.metrics == ['p', 'r', 'f1']
+
+with ez.test("Merge Nested Configs"):
+    exp_config_e = Experiment(
+        name='exp_e', training=Training(shuffle=False, epochs=6))
+    exp_config_f = Experiment(
+        name='exp_f', training=Training(shuffle=True, tags=['f']), metrics=['f1'])
+    exp_config_g = exp_config_e * exp_config_f
+    assert exp_config_g == Experiment(
+        name='exp_f', training=Training(shuffle=True, epochs=6, tags=['f']), metrics=['f1'])
+    exp_config_h = exp_config_f * exp_config_e
+    assert exp_config_h == Experiment(
+        name='exp_e', training=Training(shuffle=False, epochs=6, tags=['f']), metrics=['f1'])
+
+with ez.test("Merge Nested Configs, No Override"):
+    exp_config_i = exp_config_e + exp_config_f
+    assert exp_config_i == Experiment(
+        name='exp_e', training=Training(shuffle=False, epochs=6, tags=['f']), metrics=['f1'])
+    exp_config_j = exp_config_f + exp_config_e
+    assert exp_config_j == Experiment(
+        name='exp_f', training=Training(shuffle=True, epochs=6, tags=['f']), metrics=['f1'])
+
+
 
 
 

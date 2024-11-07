@@ -18,7 +18,7 @@ import ezpyzy as ez
 
 ```python
 text_file = ez.File('foo.txt')
-json_file = ez.File('bar.json_e')
+json_file = ez.File('bar.json')
 csv_file = ez.File('baz.csv')
 pkl_file = ez.File('qux.pkl')
 
@@ -41,8 +41,8 @@ def heavy_workload():
     ...
     return {'a': 1, 'b': 2} 
 
-x = heavy_workload(save='foo.json_e')  # Save result after calculating
-x = heavy_workload(load='foo.json_e')  # Load result without calculating
+x = heavy_workload(save='foo.json')  # Save result after calculating
+x = heavy_workload(load='foo.json')  # Load result without calculating
 ```
 
 ### Capture all args passed to a function in a dict
