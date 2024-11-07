@@ -153,9 +153,9 @@ class ConfigMeta(type):
             init(self, *args, **kwargs) # noqa
             self.configured.initialized = True
             self.configured.args = None
-        cls.__init__ = __init__
         for attr, value in attrs.items():
             setattr(cls, attr, value)
+        cls.__init__ = __init__
         return cls
 
 

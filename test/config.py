@@ -155,6 +155,55 @@ with ez.test("Merge Nested Configs, No Override"):
     assert exp_config_j == Experiment(
         name='exp_f', training=Training(shuffle=True, epochs=6, tags=['f']), metrics=['f1'])
 
+with ez.test("Inherit Config with Overrides"):
+    @dc.dataclass
+    class MyTraining(Training):
+        epochs: int = 20
+    my_training = MyTraining()
+    assert my_training.shuffle == True
+    assert my_training.epochs == 20
+    assert my_training.tags == ['training']
+
+with ez.test("Inherit and Extend Config with Overrides"):
+    @dc.dataclass
+    class MyExtendedTraining(Training):
+        epochs: int = 30
+        extension: str = 'extension!'
+    my_extended_training = MyExtendedTraining()
+    assert my_extended_training.shuffle == True
+    assert my_extended_training.epochs == 30
+    assert my_extended_training.tags == ['training']
+    assert my_extended_training.extension == 'extension!'
+
+with ez.test("Inherit Nested Config with Overrides"):
+    @dc.dataclass
+    class MyExperiment(Experiment):
+        name: str = 'my_exp'
+        training: Training = default(Training(epochs=10))
+    my_exp = MyExperiment()
+    assert my_exp.name == 'my_exp'
+    assert my_exp.training.shuffle == True
+    assert my_exp.training.epochs == 10
+    assert my_exp.training.tags == ['training']
+    assert my_exp.metrics == ['accuracy']
+
+
+with ez.test("Inherit and Extend Nested Config with Overrides"):
+    @dc.dataclass
+    class MyExtendedExperiment(Experiment):
+        name: str = 'my_exp'
+        training: Training = default(Training(epochs=10))
+        extension: str = 'extension!'
+    my_exp = MyExtendedExperiment()
+    assert my_exp.name == 'my_exp'
+    assert my_exp.training.shuffle == True
+    assert my_exp.training.epochs == 10
+    assert my_exp.training.tags == ['training']
+    assert my_exp.metrics == ['accuracy']
+    assert my_exp.extension == 'extension!'
+
+
+
 
 
 
