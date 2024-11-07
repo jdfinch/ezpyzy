@@ -7,6 +7,7 @@ import pathlib as pl
 import json
 import sys
 import copy as cp
+import functools as ft
 
 from ezpyzy.setter import setters
 from ezpyzy.import_path import get_import_path, import_obj_from_path
@@ -15,36 +16,65 @@ import typing as T
 
 
 class Configured:
-    def __init__(self, object, fields, configured, args):
+    def __init__(self, object, fields, args):
         self.object: Config = object
-        self.and_unconfigured: dict[str, None] = fields
-        self.configured: dict[str, None] = configured
+        self.and_unconfigured_and_subconfigs: dict[str, None] = fields
+        self.subconfigs: dict[str, None] = {}
+        self.and_unconfigured: dict[str, None] = {k: None for k in fields if k not in self.subconfigs}
+        self.configured: dict[str, None] = {}
         self.initialized: bool = False
         self.args: dict[str, T.Any]|None = args
+
     def __bool__(self):
         return self.initialized
+
     def __contains__(self, field: str):
         return field in self.configured
+
     def __iter__(self):
         return iter(self.configured)
+
     def __iadd__(self, field: str):
-        if isinstance(getattr(self.object, field), Config):
+        if field not in self.and_unconfigured_and_subconfigs:
             pass
+        elif isinstance(getattr(self.object, field, None), (Config, Configs)):
+            self.subconfigs[field] = None
+            self.configured.pop(field, None)
+            self.and_unconfigured.pop(field, None)
         else:
             self.configured[field] = None
+            self.subconfigs.pop(field, None)
         return self
-    def __isub__(self, other):
-        self.configured.pop(other, None)
+
+    def __isub__(self, field):
+        if field not in self.and_unconfigured_and_subconfigs:
+            pass
+        elif isinstance(getattr(self.object, field, None), (Config, Configs)):
+            self.subconfigs[field] = None
+            self.and_unconfigured.pop(field, None)
+        else:
+            self.subconfigs.pop(field, None)
+        self.configured.pop(field, None)
         return self
+
     def __setattr__(self, field, value):
-        if field in ('object', 'and_unconfigured', 'configured', 'initialized', 'args'):
+        if field in (
+            'object', 'and_unconfigured_and_subconfigs', 'subconfigs', 'and_unconfigured', 'configured',
+            'initialized', 'args'
+        ):
             super().__setattr__(field, value)
-        elif isinstance(getattr(self.object, field), (Config, Configs)):
+        elif field not in self.and_unconfigured_and_subconfigs:
             pass
         elif value:
-            self.configured[field] = None
+            self.__iadd__(field)
         else:
-            self.configured.pop(field, None)
+            self.__isub__(field)
+
+    @property
+    def and_subconfigs(self):
+        return {k: v for k, v in self.and_unconfigured_and_subconfigs.items()
+            if k in self.subconfigs or k in self.configured}
+
     @property
     def unconfigured(self):
         return {k: v for k, v in self.and_unconfigured.items() if k not in self.configured}
@@ -70,6 +100,9 @@ class Configured:
         path.write_text(serialized)
         return serialized
 
+    def __str__(self):
+        return f"{self.object.__class__.__name__}(configured={{{', '.join(self.configured)}}}, subconfigs={{{', '.join(self.subconfigs)}}})"
+
 
 class ConfigMeta(type):
     configured: Configured
@@ -77,16 +110,14 @@ class ConfigMeta(type):
         cls = super().__new__(cls, name, bases, attrs)
         cls = dc.dataclass(cls) # noqa
         cls = setters(cls)
-        fields = {field.name: None for field in dc.fields(cls)}
+        fields = {field.name: None for i, field in enumerate(dc.fields(cls)) if i > 0}
         init = getattr(cls, '__init__', lambda self: None)
         init_sig = inspect.signature(init)
         def __init__(self, *args, **kwargs):
             arguments = init_sig.bind(self, *args, **kwargs).arguments
-            self.configured = Configured(object=self, fields=fields,
-                configured={k: None for k, v in arguments.items()
-                if k in fields and k != 'base'
-                and v is not inspect.Parameter.empty},
-                args=arguments)
+            self.configured = Configured(object=self, fields=fields, args=arguments)
+            for argument in arguments:
+                self.configured += argument
             init(self, *args, **kwargs) # noqa
             self.configured.initialized = True
             self.configured.args = None
@@ -98,6 +129,7 @@ class ConfigMeta(type):
 
 @dc.dataclass
 class Config(metaclass=ConfigMeta):
+    configured: T.ClassVar[Configured]
     base: str | pl.Path | 'Config' | None = None
 
     def __post_init__(self):
@@ -124,48 +156,47 @@ class Config(metaclass=ConfigMeta):
         self += base
 
     def __setattr__(self, key, value):
-        if getattr(self, 'configured', None):
-            self.configured.__iadd__(key)
-        return super().__setattr__(key, value)
+        super().__setattr__(key, value)
+        if hasattr(self, 'configured'):
+            if self.configured:
+                self.configured.__iadd__(key)
+            elif isinstance(value, (Config, Configs)):
+                self.configured.__isub__(key)
+        return
 
     def __ior__(self, other):
         """
-        Update the configuration with the values from another configuration, regardless of whether the fields are configured or not in other.
+        Update the configuration with the values from another configuration, regardless of whether the and_unconfigured_and_subconfigs are configured or not in other.
         """
         if isinstance(other, dict):
-            for field in self.configured.and_unconfigured:
-                if field in other:
-                    if not isinstance(value:=other[field], (Config, dict)):
-                        setattr(self, field, value)
-                    elif isinstance(subconfig:=getattr(self, field), Config):
-                        subconfig |= other[field]
-                    elif isinstance(subconfig, Configs):
-                        if isinstance(value, dict):
-                            for subconfig_key, value_subconfig in value.items():
-                                if subconfig_key in subconfig:
-                                    subconfig[subconfig_key] |= value_subconfig
-                                elif isinstance(value_subconfig, Config):
-                                    subconfig[subconfig_key] = value_subconfig
-                    else:
-                        setattr(self, field, value)
-                    self.configured += field
+            contains = lambda o, f: f in o
+            get = lambda o, f: o[f]
         else:
-            for field in self.configured.and_unconfigured:
-                if hasattr(other, field):
-                    if not isinstance(value:=getattr(other, field), (Config, dict)):
-                        setattr(self, field, value)
-                    elif isinstance(subconfig:=getattr(self, field), Config):
-                        subconfig |= value
-                    elif isinstance(subconfig, Configs):
-                        if isinstance(value, dict):
-                            for subconfig_key, value_subconfig in value.items():
-                                if subconfig_key in subconfig:
-                                    subconfig[subconfig_key] |= value_subconfig
-                                elif isinstance(value_subconfig, Config):
-                                    subconfig[subconfig_key] = value_subconfig
+            contains = lambda o, f: hasattr(o, f)
+            get = lambda o, f: getattr(o, f)
+        for field in self.configured.and_unconfigured:
+            if contains(other, field):
+                setattr(self, field, get(other, field))
+        for field in self.configured.subconfigs:
+            if contains(other, field):
+                subconfig = getattr(self, field)
+                value = get(other, field)
+                if isinstance(subconfig, Config):
+                    if isinstance(value, (Config, dict)) and not isinstance(value, Configs):
+                        subconfig.__ior__(value)
                     else:
                         setattr(self, field, value)
-                    self.configured += field
+                elif isinstance(subconfig, Configs):
+                    if isinstance(value, dict) and not isinstance(value, Config):
+                        for subconfig_key, value in value.items():
+                            if subconfig_key in subconfig:
+                                subconfig[subconfig_key].__ior__(value)
+                            elif isinstance(value, Config):
+                                subconfig[subconfig_key] = value
+                    else:
+                        setattr(self, field, value)
+                else:
+                    setattr(self, field, value)
         return self
 
     def __or__(self, other):
@@ -175,59 +206,48 @@ class Config(metaclass=ConfigMeta):
 
     def __imul__(self, other):
         """
-        Update the configuration with the values from another configuration, only if the fields are configured in other (if other is not a Config object, this does the same as config |= other).
+        Update the configuration with the values from another configuration, only if fields are configured in other.
         """
         if isinstance(other, Config):
             for field in self.configured.and_unconfigured:
                 if field in other.configured:
-                    if not isinstance(value:=getattr(other, field), (Config, dict)):
-                        setattr(self, field, value)
-                    elif isinstance(subconfig:=getattr(self, field), Config):
-                        subconfig *= value
+                    setattr(self, field, getattr(other, field))
+            for field in self.configured.subconfigs:
+                if field in other.configured:
+                    subconfig = getattr(self, field)
+                    value = getattr(other, field)
+                    if isinstance(subconfig, Config):
+                        if isinstance(value, (Config, dict)) and not isinstance(value, Configs):
+                            subconfig.__imul__(value)
+                        else:
+                            setattr(self, field, value)
                     elif isinstance(subconfig, Configs):
-                        if isinstance(value, dict):
-                            for subconfig_key, value_subconfig in value.items():
+                        if isinstance(value, dict) and not isinstance(value, Config):
+                            for subconfig_key, value in value.items():
                                 if subconfig_key in subconfig:
-                                    subconfig[subconfig_key] *= value_subconfig
-                                elif isinstance(value_subconfig, Config):
-                                    subconfig[subconfig_key] = value_subconfig
-                    else:
-                        setattr(self, field, value)
-                    self.configured += field
+                                    subconfig[subconfig_key].__imul__(value)
+                        else:
+                            setattr(self, field, value)
         elif isinstance(other, dict):
             for field in self.configured.and_unconfigured:
                 if field in other:
-                    if not isinstance(value:=other[field], (Config, dict)):
-                        setattr(self, field, value)
-                    elif isinstance(subconfig:=getattr(self, field), Config):
-                        subconfig *= value
+                    setattr(self, field, other[field])
+            for field in self.configured.subconfigs:
+                if field in other:
+                    subconfig = getattr(self, field)
+                    value = other[field]
+                    if isinstance(subconfig, Config):
+                        if isinstance(value, (Config, dict)) and not isinstance(value, Configs):
+                            subconfig.__imul__(value)
+                        else:
+                            setattr(self, field, value)
                     elif isinstance(subconfig, Configs):
-                        if isinstance(value, dict):
-                            for subconfig_key, value_subconfig in value.items():
+                        if isinstance(value, dict) and not isinstance(value, Config):
+                            for subconfig_key, value in value.items():
                                 if subconfig_key in subconfig:
-                                    subconfig[subconfig_key] *= value_subconfig
-                                elif isinstance(value_subconfig, Config):
-                                    subconfig[subconfig_key] = value_subconfig
-                    else:
-                        setattr(self, field, value)
-                    self.configured += field
-        else:
-            for field in self.configured.and_unconfigured:
-                if hasattr(other, field):
-                    if not isinstance(value:=getattr(other, field), (Config, dict)):
-                        setattr(self, field, value)
-                    elif isinstance(subconfig:=getattr(self, field), Config):
-                        subconfig *= value
-                    elif isinstance(subconfig, Configs):
-                        if isinstance(value, dict):
-                            for subconfig_key, value_subconfig in value.items():
-                                if subconfig_key in subconfig:
-                                    subconfig[subconfig_key] *= value_subconfig
-                                elif isinstance(value_subconfig, Config):
-                                    subconfig[subconfig_key] = value_subconfig
-                    else:
-                        setattr(self, field, value)
-                    self.configured += field
+                                    subconfig[subconfig_key].__imul__(value)
+                        else:
+                            setattr(self, field, value)
         return self
 
     def __mul__(self, other):
@@ -237,42 +257,28 @@ class Config(metaclass=ConfigMeta):
 
     def __iadd__(self, other):
         """
-        Update unconfigured values with another configuration, regardless of whether the fields are configured or not in other.
+        Update only UNconfigured fields with values from another configuration (it does not matter whether the fields are configured in other).
         """
         if isinstance(other, dict):
-            for field in self.configured.unconfigured:
-                if field in other:
-                    if not isinstance(value:=other[field], (Config, dict)):
-                        setattr(self, field, value)
-                    elif isinstance(subconfig:=getattr(self, field), Config):
-                        subconfig += value
-                    elif isinstance(subconfig, Configs):
-                        if isinstance(value, dict):
-                            for subconfig_key, value_subconfig in value.items():
-                                if subconfig_key in subconfig:
-                                    subconfig[subconfig_key] += value_subconfig
-                                elif isinstance(value_subconfig, Config):
-                                    subconfig[subconfig_key] = value_subconfig
-                    else:
-                        setattr(self, field, value)
-                    self.configured += field
+            contains = lambda o, f: f in o
+            get = lambda o, f: o[f]
         else:
-            for field in self.configured.unconfigured:
-                if hasattr(other, field):
-                    if not isinstance(value:=getattr(other, field), (Config, dict)):
-                        setattr(self, field, value)
-                    elif isinstance(subconfig:=getattr(self, field), Config):
-                        subconfig += value
-                    elif isinstance(subconfig, Configs):
-                        if isinstance(value, dict):
-                            for subconfig_key, value_subconfig in value.items():
-                                if subconfig_key in subconfig:
-                                    subconfig[subconfig_key] += value_subconfig
-                                elif isinstance(value_subconfig, Config):
-                                    subconfig[subconfig_key] = value_subconfig
-                    else:
-                        setattr(self, field, value)
-                    self.configured += field
+            contains = lambda o, f: hasattr(o, f)
+            get = lambda o, f: getattr(o, f)
+        for field in self.configured.unconfigured:
+            if contains(other, field):
+                setattr(self, field, get(other, field))
+        for field in self.configured.subconfigs:
+            if contains(other, field):
+                subconfig = getattr(self, field)
+                value = get(other, field)
+                if isinstance(subconfig, Config):
+                    if isinstance(value, (Config, dict)) and not isinstance(value, Configs):
+                        subconfig.__iadd__(value)
+                elif isinstance(subconfig, Configs) and isinstance(value, dict) and not isinstance(value, Config):
+                    for subconfig_key, value in value.items():
+                        if subconfig_key in subconfig:
+                            subconfig[subconfig_key].__iadd__(value)
         return self
 
     def __add__(self, other):
@@ -326,6 +332,15 @@ class ConfigJSONEncoder(json.JSONEncoder):
             return json
         else:
             return super().default(obj)
+
+
+def default(x) -> ...:
+    if callable(x) and getattr(x, '__name__', None) == "<lambda>":
+        return dc.field(default_factory=x)
+    else:
+        # if isinstance(x, Config):
+        #     x.undefined = {f.name for f in dc.and_unconfigured(x)} # noqa
+        return dc.field(default_factory=ft.partial(cp.deepcopy, x))
 
 
 if __name__ == '__main__':

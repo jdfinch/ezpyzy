@@ -14,7 +14,7 @@ def send_email(recipient, subject, message):
     Send an email to the specified recipient with the specified subject and message.
     To use, create an App Password in a Gmail account, then create this file:
 
-    ~/.pw/gmail.json
+    ~/.pw/gmail.json_e
 
     {
         "smtp_server": "smtp.gmail.com",
@@ -25,7 +25,7 @@ def send_email(recipient, subject, message):
     """
     # Determine the user's home directory
     home_dir = os.path.expanduser("~")
-    json_file_path = os.path.join(home_dir, ".pw", "gmail.json")
+    json_file_path = os.path.join(home_dir, ".pw", "gmail.json_e")
 
     # Load SMTP server settings and credentials from the JSON file
     with open(json_file_path, 'r') as json_file:
