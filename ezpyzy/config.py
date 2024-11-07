@@ -24,6 +24,8 @@ class Arguments:
         return iter(self.__args__)
     def __getitem__(self, item):
         return self.__args__[item]
+    def __delitem__(self, key):
+        del self.__args__[key]
     def __len__(self):
         return len(self.__args__)
     def __contains__(self, item):
@@ -37,6 +39,8 @@ class Arguments:
             setattr(self.__obj__, key, value)
             self.__setattr__(key, value)
             self.__obj__.undefined.discard(key)
+    def __delattr__(self, item):
+        del self.__args__[item]
     def __str__(self):
         return f"Arguments({self.__args__})"
     def __repr__(self):
@@ -56,8 +60,8 @@ def config(cls=None, **kwargs):
         self.__dict__['__mutable__'] = True
         # self.defaults = {
         #     **{p.name: p.default for p in init_sig.parameters.values() if p.default is not p.empty},
-        #     **{f.name: f.default for f in dc.fields(cls) if f.default is not dc.MISSING},
-        #     **{f.name: f.default_factory() for f in dc.fields(cls) if f.default_factory is not dc.MISSING},
+        #     **{f.name: f.default for f in dc.and_unconfigured(cls) if f.default is not dc.MISSING},
+        #     **{f.name: f.default_factory() for f in dc.and_unconfigured(cls) if f.default_factory is not dc.MISSING},
         # }
         bound = init_sig.bind(self, *args, **kwargs).arguments
         self.args = Arguments(self, {k: v for i, (k, v) in enumerate(bound.items()) if i})
@@ -109,7 +113,7 @@ class ConfigJSONEncoder(json.JSONEncoder):
 
     def default(self, obj):
         if isinstance(obj, Config):
-            json = {field.name: getattr(obj, field.name) for field in dc.fields(obj)}
+            json = {field.name: getattr(obj, field.name) for field in dc.fields(obj)} # noqa
             json['__class__'] = get_import_path(obj.__class__)
             imported_cls = import_obj_from_path(json['__class__'])
             assert imported_cls is obj.__class__
@@ -128,7 +132,8 @@ class Config:
     # defaults: T.ClassVar[dict[str, T.Any]]
 
     def __post_init__(self):
-        if 'base' in self.args and (config_arg := self.args.pop('base')) is not None:
+        if 'base' in self.args and (config_arg := self.args.base) is not None:
+            del self.args.base
             self.base = None
             serialized = None
             serialized_subpath = None
@@ -217,6 +222,25 @@ class Config:
         path.write_text(serialized)
         return serialized
 
+    def __ior__(self, other):
+        assert isinstance(other, Config), f'Cannot merge Config with {type(other)}'
+        for field in dc.fields(other):
+            if field.name not in other.undefined:
+                setattr(self, field.name, getattr(other, field.name))
+                self.undefined.discard(field.name)
+        return self
+
+    def __or__(self, other):
+        assert isinstance(other, Config), f'Cannot merge Config with {type(other)}'
+        merged = cp.deepcopy(self)
+        merged |= other
+        return merged
+
+    def __setattr__(self, key, value):
+        if not isinstance(self.__dict__.get('args', None), Arguments) and 'undefined' in self.__dict__:
+            self.undefined.discard(key)
+        return object.__setattr__(self, key, value)
+
 
 @config
 @dc.dataclass
@@ -235,7 +259,7 @@ def default(x) -> ...:
         return dc.field(default_factory=x)
     else:
         # if isinstance(x, Config):
-        #     x.undefined = {f.name for f in dc.fields(x)} # noqa
+        #     x.undefined = {f.name for f in dc.and_unconfigured(x)} # noqa
         return dc.field(default_factory=ft.partial(cp.deepcopy, x))
 
 
