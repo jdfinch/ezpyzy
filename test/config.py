@@ -1,5 +1,5 @@
 
-from ezpyzy.config import Config, default
+from ezpyzy.config import Config, MultiConfig, default
 import ezpyzy as ez
 import dataclasses as dc
 import textwrap as tw
@@ -34,7 +34,7 @@ with ez.test("Evolve Mutated Config"):
     assert train_config_d.tags == ['training', 'new']
 
 with ez.test("Merge Configs"):
-    train_config_e = train_config_d * train_config_b
+    train_config_e = train_config_d & train_config_b
     assert train_config_e.shuffle == False
     assert train_config_e.epochs == 2
     assert train_config_e.tags == ['training', 'new']
@@ -140,18 +140,18 @@ with ez.test("Merge Nested Configs"):
         name='exp_e', training=Training(shuffle=False, epochs=6))
     exp_config_f = Experiment(
         name='exp_f', training=Training(shuffle=True, tags=['f']), metrics=['f1'])
-    exp_config_g = exp_config_e * exp_config_f
+    exp_config_g = exp_config_e & exp_config_f
     assert exp_config_g == Experiment(
         name='exp_f', training=Training(shuffle=True, epochs=6, tags=['f']), metrics=['f1'])
-    exp_config_h = exp_config_f * exp_config_e
+    exp_config_h = exp_config_f & exp_config_e
     assert exp_config_h == Experiment(
         name='exp_e', training=Training(shuffle=False, epochs=6, tags=['f']), metrics=['f1'])
 
 with ez.test("Merge Nested Configs, No Override"):
-    exp_config_i = exp_config_e + exp_config_f
+    exp_config_i = exp_config_e * exp_config_f
     assert exp_config_i == Experiment(
         name='exp_e', training=Training(shuffle=False, epochs=6, tags=['f']), metrics=['f1'])
-    exp_config_j = exp_config_f + exp_config_e
+    exp_config_j = exp_config_f * exp_config_e
     assert exp_config_j == Experiment(
         name='exp_f', training=Training(shuffle=True, epochs=6, tags=['f']), metrics=['f1'])
 
@@ -201,6 +201,37 @@ with ez.test("Inherit and Extend Nested Config with Overrides"):
     assert my_exp.metrics == ['accuracy']
     assert my_exp.extension == 'extension!'
 
+with ez.test("Define Multiple Subconfigs with Config dict"):
+    @dc.dataclass
+    class MultipleTraining(Config):
+        groupname: str = None
+        stages: MultiConfig[Training] = default(MultiConfig(
+            pretraining=Training(shuffle=False),
+            finetuning=Training(epochs=3),
+        ))
+        metrics: list[str] = default(['accuracy'])
+
+with ez.test("Construct Multiple Subconfigs"):
+    multi_train_a = MultipleTraining(groupname='multi_a')
+    assert multi_train_a.groupname == 'multi_a'
+    assert multi_train_a.stages['pretraining'].shuffle == False
+    assert multi_train_a.stages['pretraining'].epochs == 1
+    assert multi_train_a.stages['pretraining'].tags == ['training']
+    assert multi_train_a.stages['finetuning'].shuffle == True
+    assert multi_train_a.stages['finetuning'].epochs == 3
+    assert multi_train_a.stages['finetuning'].tags == ['training']
+    assert multi_train_a.metrics == ['accuracy']
+
+with ez.test("Evolve Multiple Subconfigs"):
+    multi_train_b = MultipleTraining(multi_train_a,
+        stages=MultiConfig(finetuning=Training(tags=['ft'])))
+    assert multi_train_b.groupname == 'multi_a'
+    assert multi_train_b.stages['pretraining'].shuffle == False
+    assert multi_train_b.stages['pretraining'].epochs == 1
+    assert multi_train_b.stages['pretraining'].tags == ['training']
+    assert multi_train_b.stages['finetuning'].shuffle == True
+    assert multi_train_b.stages['finetuning'].epochs == 3
+    assert multi_train_b.stages['finetuning'].tags == ['ft']
 
 
 
