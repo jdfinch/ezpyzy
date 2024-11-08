@@ -152,7 +152,7 @@ class ConfigMeta(type):
         for attr, default_value in attrs.items():
             if (attr in attrs.get('__annotations__', {})
                 and ClassVar_pattern.search(str(attrs['__annotations__'][attr])) is None
-                and not isinstance(default_value, (str, int, float, bool, frozenset))
+                and not isinstance(default_value, (str, int, float, bool, frozenset, dc.Field))
             ):
                 attrs[attr] = default(default_value)
         cls = super().__new__(cls, name, bases, attrs)
