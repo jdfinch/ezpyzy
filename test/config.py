@@ -1,16 +1,16 @@
 
-from ezpyzy.config import Config, MultiConfig, default
+from ezpyzy.config import Config, MultiConfig
 import ezpyzy as ez
 import dataclasses as dc
 import textwrap as tw
 
 
-with ez.test("Define Config"):
+with ez.test("Define Config", crash=True):
     @dc.dataclass
     class Training(Config):
         shuffle: bool = True
         epochs: int = 1
-        tags: list[str] = default(['training'])
+        tags: list[str] = ['training']
 
 with ez.test("Construct Config"):
     train_config_a = Training(shuffle=False)
@@ -65,8 +65,8 @@ with ez.test("Define Config with Nested Config"):
     @dc.dataclass
     class Experiment(Config):
         name: str = None
-        training: Training = default(Training())
-        metrics: list[str] = default(['accuracy'])
+        training: Training = Training()
+        metrics: list[str] = ['accuracy']
 
 with ez.test("Construct Nested Config"):
     exp_config_a = Experiment(name='exp1', training=Training(epochs=5))
@@ -179,7 +179,7 @@ with ez.test("Inherit Nested Config with Overrides"):
     @dc.dataclass
     class MyExperiment(Experiment):
         name: str = 'my_exp'
-        training: Training = default(Training(epochs=10))
+        training: Training = Training(epochs=10)
     my_exp = MyExperiment()
     assert my_exp.name == 'my_exp'
     assert my_exp.training.shuffle == True
@@ -191,7 +191,7 @@ with ez.test("Inherit and Extend Nested Config with Overrides"):
     @dc.dataclass
     class MyExtendedExperiment(Experiment):
         name: str = 'my_exp'
-        training: Training = default(Training(epochs=10))
+        training: Training = Training(epochs=10)
         extension: str = 'extension!'
     my_exp = MyExtendedExperiment()
     assert my_exp.name == 'my_exp'
@@ -205,11 +205,11 @@ with ez.test("Define Multiple Subconfigs with Config dict"):
     @dc.dataclass
     class MultipleTraining(Config):
         groupname: str = None
-        stages: MultiConfig[Training] = default(MultiConfig(
+        stages: MultiConfig[Training] = MultiConfig(
             pretraining=Training(shuffle=False),
             finetuning=Training(epochs=3),
-        ))
-        metrics: list[str] = default(['accuracy'])
+        )
+        metrics: list[str] = ['accuracy']
 
 with ez.test("Construct Multiple Subconfigs"):
     multi_train_a = MultipleTraining(groupname='multi_a')

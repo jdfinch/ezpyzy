@@ -8,11 +8,20 @@ import json
 import sys
 import copy as cp
 import functools as ft
+import re
 
 from ezpyzy.setter import setters
 from ezpyzy.import_path import get_import_path, import_obj_from_path
 
 import typing as T
+
+ClassVar_pattern = re.compile(r'\bClassVar\b')
+
+def default(x) -> ...:
+    if callable(x) and getattr(x, '__name__', None) == "<lambda>":
+        return dc.field(default_factory=x)
+    else:
+        return dc.field(default_factory=ft.partial(cp.deepcopy, x))
 
 
 class ConfigFields(dict[str, None]):
@@ -138,7 +147,14 @@ class Configured:
 
 class ConfigMeta(type):
     configured: Configured
+
     def __new__(cls, name, bases, attrs):
+        for attr, default_value in attrs.items():
+            if (attr in attrs.get('__annotations__', {})
+                and ClassVar_pattern.search(str(attrs['__annotations__'][attr])) is None
+                and not isinstance(default_value, (str, int, float, bool, frozenset))
+            ):
+                attrs[attr] = default(default_value)
         cls = super().__new__(cls, name, bases, attrs)
         cls = dc.dataclass(cls) # noqa
         cls = setters(cls)
@@ -406,15 +422,6 @@ class ConfigJSONEncoder(json.JSONEncoder):
             return json
         else:
             return super().default(obj)
-
-
-def default(x) -> ...:
-    if callable(x) and getattr(x, '__name__', None) == "<lambda>":
-        return dc.field(default_factory=x)
-    else:
-        # if isinstance(x, Config):
-        #     x.undefined = {f.name for f in dc.and_unconfigured(x)} # noqa
-        return dc.field(default_factory=ft.partial(cp.deepcopy, x))
 
 
 if __name__ == '__main__':
