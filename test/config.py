@@ -1,5 +1,5 @@
 
-from ezpyzy.config import Config, MultiConfig
+from ezpyzy.config import Config, MultiConfig, Implementation
 import ezpyzy as ez
 import dataclasses as dc
 import textwrap as tw
@@ -232,6 +232,32 @@ with ez.test("Evolve Multiple Subconfigs"):
     assert multi_train_b.stages['finetuning'].shuffle == True
     assert multi_train_b.stages['finetuning'].epochs == 3
     assert multi_train_b.stages['finetuning'].tags == ['ft']
+
+with ez.test("Define a Config Implementation"):
+    @dc.dataclass
+    class ActuallyTrain(Implementation, Training):
+        n_processes: int = 1
+        def __post_init__(self):
+            super().__post_init__()
+            self.epochs_run = list(range(self.epochs))
+    assert ActuallyTrain.__config_implemented__ is Training
+    assert Training.__implementation__ is ActuallyTrain
+
+with ez.test("Construct Implementation"):
+    actually_train_a = ActuallyTrain(epochs=5)
+    assert actually_train_a.shuffle == True
+    assert actually_train_a.epochs == 5
+    assert actually_train_a.tags == ['training']
+    assert actually_train_a.n_processes == 1
+    assert actually_train_a.epochs_run == list(range(5))
+
+with ez.test("Save Implementation and Load as Config Only"):
+    impl_json = actually_train_a.configured.json()
+    config_only = Training(impl_json)
+    assert config_only.shuffle == True
+    assert config_only.epochs == 5
+    assert config_only.tags == ['training']
+    assert not hasattr(config_only, 'n_processes')
 
 
 

@@ -24,6 +24,10 @@ def default(x) -> ...:
         return dc.field(default_factory=ft.partial(cp.deepcopy, x))
 
 
+class Implementation:
+    __config_implemented__: T.ClassVar[Config]
+
+
 class ConfigFields(dict[str, None]):
     def __init__(self, object, which_fields_serialization_strategy):
         dict.__init__(self)
@@ -121,13 +125,11 @@ class Configured:
         return config_fields
 
     def dict(self):
-        module = sys.modules[self.object.__class__.__module__]
-        encoder = ConfigJSONEncoder(module)
+        encoder = ConfigJSONEncoder()
         return encoder.default(self.object)
 
     def json(self, indent=2):
-        module = sys.modules[self.object.__class__.__module__]
-        encoder = ConfigJSONEncoder(module, indent=indent)
+        encoder = ConfigJSONEncoder(indent=indent)
         return encoder.encode(self.object)
 
     def save(self, path:str|pl.Path=None, indent:int|None=2):
@@ -148,7 +150,7 @@ class Configured:
 class ConfigMeta(type):
     configured: Configured
 
-    def __new__(cls, name, bases, attrs):
+    def __new__(cls, name, bases: tuple, attrs):
         for attr, default_value in attrs.items():
             if (attr in attrs.get('__annotations__', {})
                 and ClassVar_pattern.search(str(attrs['__annotations__'][attr])) is None
@@ -159,6 +161,15 @@ class ConfigMeta(type):
         cls = dc.dataclass(cls) # noqa
         cls = setters(cls)
         fields = {field.name: None for i, field in enumerate(dc.fields(cls)) if i > 0}
+        if Implementation in bases:
+            impl_index = bases.index(Implementation)
+            implmented_config_cls = bases[impl_index + 1]
+            if hasattr(implmented_config_cls, '__implementation__') and implmented_config_cls.__implementation__ != cls:
+                raise TypeError(f"Defined Implementation {cls} of Config {implmented_config_cls} but Config already has an implmentation: {implmented_config_cls.__implementation__}.")
+            elif not issubclass(implmented_config_cls, Config):
+                raise TypeError(f"Defined Config Implementation {cls} of {implmented_config_cls}, but it is not a subclass of Config.")
+            implmented_config_cls.__implementation__ = cls
+            cls.__config_implemented__ = implmented_config_cls
         init = getattr(cls, '__init__', lambda self: None)
         init_sig = inspect.signature(init)
         def __init__(self, *args, **kwargs):
@@ -166,6 +177,8 @@ class ConfigMeta(type):
             self.configured = Configured(object=self, fields=fields, args=arguments)
             for argument in arguments:
                 self.configured += argument
+            if hasattr(self, '__config_implemented__'):
+                ...
             init(self, *args, **kwargs) # noqa
             self.configured.initialized = True
             self.configured.args = None
@@ -185,7 +198,7 @@ class Config(metaclass=ConfigMeta):
             return
         if isinstance(self.base, str) and self.base.lstrip().startswith('{'):
             '''load base from JSON str'''
-            decoder = ConfigJSONDecoder(sys.modules[self.__class__.__module__])
+            decoder = ConfigJSONDecoder()
             loaded = decoder.decode(self.base)
             base = loaded
             self.base = None
@@ -193,7 +206,7 @@ class Config(metaclass=ConfigMeta):
             '''load base from file'''
             config_path = pl.Path(self.base)
             json_content = config_path.read_text()
-            decoder = ConfigJSONDecoder(sys.modules[self.__class__.__module__])
+            decoder = ConfigJSONDecoder()
             loaded = decoder.decode(json_content)
             base = loaded
             self.base = str(config_path)
@@ -385,9 +398,9 @@ class MultiConfig(dict[str, CONFIG]):
         self.update(configs_)
         self.update(configs)
 
+
 class ConfigJSONDecoder(json.JSONDecoder):
-    def __init__(self, module, *args, **kwargs):
-        self.module = module
+    def __init__(self, *args, **kwargs):
         self.configs = {}
         super().__init__(object_hook=self.object_hook, *args, **kwargs)
 
@@ -401,12 +414,8 @@ class ConfigJSONDecoder(json.JSONDecoder):
         else:
             return obj
 
-
 class ConfigJSONEncoder(json.JSONEncoder):
-    def __init__(self, module = None,
-        which: T.LiteralString = "all",
-        *args, **kwargs):
-        self.module = module
+    def __init__(self, which: T.LiteralString = "all", *args, **kwargs):
         self.which_fields = which
         super().__init__(*args, **kwargs)
 
@@ -415,10 +424,11 @@ class ConfigJSONEncoder(json.JSONEncoder):
             which = dict(all='and_unconfigured_and_subconfigs').get(self.which_fields, self.which_fields)
             fields_to_serialize = getattr(obj.configured, which)
             json = {field: getattr(obj, field) for field in fields_to_serialize}
-            if self.module is not None and self.which_fields == 'all':
-                json['__class__'] = get_import_path(obj.__class__)
+            if self.which_fields == 'all':
+                cls = obj.__config_implemented__ if isinstance(obj, Implementation) else obj.__class__
+                json['__class__'] = get_import_path(cls)
                 imported_cls = import_obj_from_path(json['__class__'])
-                assert imported_cls is obj.__class__
+                assert imported_cls is cls, f"Imported class {imported_cls} is not the same as the class {cls} being serialized."
             return json
         else:
             return super().default(obj)
