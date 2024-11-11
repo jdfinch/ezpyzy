@@ -421,11 +421,8 @@ class ConfigJSONEncoder(json.JSONEncoder):
 
     def default(self, obj):
         if isinstance(obj, Config):
-            which = self.which_fields
-            if which == 'all':
-                fields_to_serialize = dict.fromkeys(field.name for field in dc.fields(obj)) # noqa
-            else:
-                fields_to_serialize = getattr(obj.configured, which)
+            which = dict(all='and_unconfigured_and_subconfigs').get(self.which_fields, self.which_fields)
+            fields_to_serialize = getattr(obj.configured, which)
             json = {field: getattr(obj, field) for field in fields_to_serialize}
             if self.which_fields == 'all':
                 cls = obj.__config_implemented__ if isinstance(obj, ImplementsConfig) else obj.__class__

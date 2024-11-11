@@ -42,7 +42,7 @@ with ez.test("Merge Configs"):
 with ez.test("Serialize Config"):
     json_e = train_config_e.configured.dict()
     assert '__class__' in json_e and 'Training' in json_e.pop('__class__')
-    assert json_e == {'base': None, 'shuffle': False, 'epochs': 2, 'tags': ['training', 'new']}
+    assert json_e == {'shuffle': False, 'epochs': 2, 'tags': ['training', 'new']}
 
 with ez.test("Deserialize JSON"):
     json_e = ez.JSON.serialize(json_e)
