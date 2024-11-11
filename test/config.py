@@ -1,5 +1,5 @@
 
-from ezpyzy.config import Config, MultiConfig, Implementation
+from ezpyzy.config import Config, MultiConfig, ImplementsConfig
 import ezpyzy as ez
 import dataclasses as dc
 import textwrap as tw
@@ -42,7 +42,7 @@ with ez.test("Merge Configs"):
 with ez.test("Serialize Config"):
     json_e = train_config_e.configured.dict()
     assert '__class__' in json_e and 'Training' in json_e.pop('__class__')
-    assert json_e == {'shuffle': False, 'epochs': 2, 'tags': ['training', 'new']}
+    assert json_e == {'base': None, 'shuffle': False, 'epochs': 2, 'tags': ['training', 'new']}
 
 with ez.test("Deserialize JSON"):
     json_e = ez.JSON.serialize(json_e)
@@ -235,7 +235,7 @@ with ez.test("Evolve Multiple Subconfigs"):
 
 with ez.test("Define a Config Implementation"):
     @dc.dataclass
-    class ActuallyTrain(Implementation, Training):
+    class ActuallyTrain(ImplementsConfig, Training):
         n_processes: int = 1
         def __post_init__(self):
             super().__post_init__()
