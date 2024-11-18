@@ -1,94 +1,406 @@
 
 from __future__ import annotations
 
+import inspect
 import dataclasses as dc
-import json
-from dataclasses import dataclass
-import inspect as ins
-import functools as ft
 import pathlib as pl
-import copy as cp
+import json
 import sys
+import copy as cp
+import functools as ft
+import re
 
 from ezpyzy.setter import setters
 from ezpyzy.import_path import get_import_path, import_obj_from_path
 
 import typing as T
 
+ClassVar_pattern = re.compile(r'\bClassVar\b')
 
-class Arguments:
-    def __init__(self, obj, args):
-        self.__obj__ = obj
-        self.__args__ = args
-    def __iter__(self):
-        return iter(self.__args__)
-    def __getitem__(self, item):
-        return self.__args__[item]
-    def __len__(self):
-        return len(self.__args__)
-    def __contains__(self, item):
-        return item in self.__args__
-    def __getattr__(self, item):
-        return getattr(self.__obj__, item)
-    def __setattr__(self, key, value):
-        if key in ('__obj__', '__args__'):
-            object.__setattr__(self, key, value)
+def default(x) -> ...:
+    if callable(x) and getattr(x, '__name__', None) == "<lambda>":
+        return dc.field(default_factory=x)
+    else:
+        return dc.field(default_factory=ft.partial(cp.deepcopy, x))
+
+
+class Implementation:
+    __config_implemented__: T.ClassVar[Config]
+
+
+class ConfigFields(dict[str, None]):
+    def __init__(self, object, which_fields_serialization_strategy):
+        dict.__init__(self)
+        self.object = object
+        self._which_fields_serialization_strategy = which_fields_serialization_strategy
+
+    def dict(self):
+        encoder = ConfigJSONEncoder(which=self._which_fields_serialization_strategy)
+        return encoder.default(self.object)
+
+    def json(self, indent=2):
+        encoder = ConfigJSONEncoder(which=self._which_fields_serialization_strategy, indent=indent)
+        return encoder.encode(self.object)
+
+    def save(self, path: str | pl.Path = None, indent: int | None = 2):
+        serialized = self.json(indent=indent)
+        if path is not None:
+            path = pl.Path(path).expanduser()
+        elif self.object.base:
+            path = pl.Path(self.object.base)
         else:
-            setattr(self.__obj__, key, value)
-            self.__setattr__(key, value)
-            self.__obj__.undefined.discard(key)
+            raise ValueError('No path provided and no base path found for saving config.')
+        path.write_text(serialized)
+        return serialized
+
+
+class Configured:
+    def __init__(self, object, fields, args):
+        self.object: Config = object
+        self.and_unconfigured_and_subconfigs: ConfigFields[str, None] = ConfigFields(object, 'all')
+        self.and_unconfigured_and_subconfigs.update(fields)
+        self.subconfigs: ConfigFields[str, None] = ConfigFields(object, 'subconfigs')
+        self.and_unconfigured: ConfigFields[str, None] = ConfigFields(object, 'and_unconfigured')
+        self.and_unconfigured.update(fields)
+        self.configured: ConfigFields[str, None] = ConfigFields(object, 'configured')
+        self.initialized: bool = False
+        self.args: dict[str, T.Any]|None = args
+
+    def __bool__(self):
+        return self.initialized
+
+    def __contains__(self, field: str):
+        return field in self.configured
+
+    def __iter__(self):
+        return iter(self.configured)
+
+    def __iadd__(self, field: str):
+        if field not in self.and_unconfigured_and_subconfigs:
+            pass
+        elif isinstance(getattr(self.object, field, None), (Config, MultiConfig)):
+            self.subconfigs[field] = None
+            self.configured.pop(field, None)
+            self.and_unconfigured.pop(field, None)
+        else:
+            self.configured[field] = None
+            self.subconfigs.pop(field, None)
+        return self
+
+    def __isub__(self, field):
+        if field not in self.and_unconfigured_and_subconfigs:
+            pass
+        elif isinstance(getattr(self.object, field, None), (Config, MultiConfig)):
+            self.subconfigs[field] = None
+            self.and_unconfigured.pop(field, None)
+        else:
+            self.subconfigs.pop(field, None)
+        self.configured.pop(field, None)
+        return self
+
+    def __setattr__(self, field, value):
+        if field in (
+            'object', 'and_unconfigured_and_subconfigs', 'subconfigs', 'and_unconfigured', 'configured',
+            'initialized', 'args'
+        ):
+            super().__setattr__(field, value)
+        elif field not in self.and_unconfigured_and_subconfigs:
+            pass
+        elif value:
+            self.__iadd__(field)
+        else:
+            self.__isub__(field)
+
+    @property
+    def and_subconfigs(self) -> ConfigFields[str, None]:
+        config_fields = ConfigFields(self.object, 'and_subconfigs')
+        config_fields.update({k: v for k, v in self.and_unconfigured_and_subconfigs.items()
+            if k in self.subconfigs or k in self.configured})
+        return config_fields
+
+    @property
+    def unconfigured(self) -> ConfigFields[str, None]:
+        config_fields = ConfigFields(self.object, 'unconfigured')
+        config_fields.update({k: v for k, v in self.and_unconfigured.items() if k not in self.configured})
+        return config_fields
+
+    def dict(self):
+        encoder = ConfigJSONEncoder()
+        return encoder.default(self.object)
+
+    def json(self, indent=2):
+        encoder = ConfigJSONEncoder(indent=indent)
+        return encoder.encode(self.object)
+
+    def save(self, path:str|pl.Path=None, indent:int|None=2):
+        serialized = self.json(indent=indent)
+        if path is not None:
+            path = pl.Path(path).expanduser()
+        elif self.object.base:
+            path = pl.Path(self.object.base)
+        else:
+            raise ValueError('No path provided and no base path found for saving config.')
+        path.write_text(serialized)
+        return serialized
+
     def __str__(self):
-        return f"Arguments({self.__args__})"
-    def __repr__(self):
-        return str(self)
+        return f"{self.object.__class__.__name__}(configured={{{', '.join(self.configured)}}}, subconfigs={{{', '.join(self.subconfigs)}}})"
 
 
+class ConfigMeta(type):
+    configured: Configured
+
+    def __new__(cls, name, bases: tuple, attrs):
+        for attr, default_value in attrs.items():
+            if (attr in attrs.get('__annotations__', {})
+                and ClassVar_pattern.search(str(attrs['__annotations__'][attr])) is None
+                and not isinstance(default_value, (str, int, float, bool, frozenset, dc.Field))
+            ):
+                attrs[attr] = default(default_value)
+        cls = super().__new__(cls, name, bases, attrs)
+        cls = dc.dataclass(cls) # noqa
+        cls = setters(cls)
+        fields = {field.name: None for i, field in enumerate(dc.fields(cls)) if i > 0}
+        if Implementation in bases:
+            impl_index = bases.index(Implementation)
+            implmented_config_cls = bases[impl_index + 1]
+            if hasattr(implmented_config_cls, '__implementation__') and implmented_config_cls.__implementation__ != cls:
+                raise TypeError(f"Defined Implementation {cls} of Config {implmented_config_cls} but Config already has an implmentation: {implmented_config_cls.__implementation__}.")
+            elif not issubclass(implmented_config_cls, Config):
+                raise TypeError(f"Defined Config Implementation {cls} of {implmented_config_cls}, but it is not a subclass of Config.")
+            implmented_config_cls.__implementation__ = cls
+            cls.__config_implemented__ = implmented_config_cls
+        init = getattr(cls, '__init__', lambda self: None)
+        init_sig = inspect.signature(init)
+        def __init__(self, *args, **kwargs):
+            arguments = init_sig.bind(self, *args, **kwargs).arguments
+            self.configured = Configured(object=self, fields=fields, args=arguments)
+            for argument in arguments:
+                self.configured += argument
+            if hasattr(self, '__config_implemented__'):
+                ...
+            init(self, *args, **kwargs) # noqa
+            self.configured.initialized = True
+            self.configured.args = None
+        for attr, value in attrs.items():
+            setattr(cls, attr, value)
+        cls.__init__ = __init__
+        return cls
 
 
-def config(cls=None, **kwargs):
-    if cls is None:
-        return ft.partial(config, **kwargs)
-    cls = dc.dataclass(cls)
-    cls = setters(cls)
-    init = getattr(cls, '__init__', lambda self: None)
-    init_sig = ins.signature(init)
-    def __init__(self, *args, **kwargs):
-        self.__dict__['__mutable__'] = True
-        # self.defaults = {
-        #     **{p.name: p.default for p in init_sig.parameters.values() if p.default is not p.empty},
-        #     **{f.name: f.default for f in dc.fields(cls) if f.default is not dc.MISSING},
-        #     **{f.name: f.default_factory() for f in dc.fields(cls) if f.default_factory is not dc.MISSING},
-        # }
-        bound = init_sig.bind(self, *args, **kwargs).arguments
-        self.args = Arguments(self, {k: v for i, (k, v) in enumerate(bound.items()) if i})
-        self.undefined = {f.name for f in dc.fields(cls) if f.name not in self.args}
-        init(self, *args, **kwargs) # noqa
-        del self.args
-        # del self.defaults
-        del self.__mutable__
-    cls.__init__ = __init__
-    return cls
+@dc.dataclass
+class Config(metaclass=ConfigMeta):
+    configured: T.ClassVar[Configured]
+    base: str | pl.Path | 'Config' | None = None
+
+    def __post_init__(self):
+        if not self.base:
+            return
+        if isinstance(self.base, str) and self.base.lstrip().startswith('{'):
+            '''load base from JSON str'''
+            decoder = ConfigJSONDecoder()
+            loaded = decoder.decode(self.base)
+            base = loaded
+            self.base = None
+        elif isinstance(self.base, pl.Path) or isinstance(self.base, str):
+            '''load base from file'''
+            config_path = pl.Path(self.base)
+            json_content = config_path.read_text()
+            decoder = ConfigJSONDecoder()
+            loaded = decoder.decode(json_content)
+            base = loaded
+            self.base = str(config_path)
+        else:
+            '''load base from Config instance, JSON dict, or other object'''
+            base = self.base
+            self.base = None
+        self **= base
+
+    def __setattr__(self, key, value):
+        super().__setattr__(key, value)
+        if hasattr(self, 'configured'):
+            if self.configured:
+                self.configured.__iadd__(key)
+            elif isinstance(value, (Config, MultiConfig)):
+                self.configured.__isub__(key)
+        return
+
+    def __ior__(self, other):
+        """
+        Update the configuration with the values from another configuration, regardless of whether the and_unconfigured_and_subconfigs are configured or not in other.
+        """
+        if isinstance(other, dict):
+            contains = lambda o, f: f in o
+            get = lambda o, f: o[f]
+        else:
+            contains = lambda o, f: hasattr(o, f)
+            get = lambda o, f: getattr(o, f)
+        for field in self.configured.and_unconfigured:
+            if contains(other, field):
+                setattr(self, field, get(other, field))
+        for field in self.configured.subconfigs:
+            if contains(other, field):
+                subconfig = getattr(self, field)
+                value = get(other, field)
+                if isinstance(subconfig, Config):
+                    if isinstance(value, (Config, dict)) and not isinstance(value, MultiConfig):
+                        subconfig.__ior__(value)
+                    else:
+                        setattr(self, field, value)
+                elif isinstance(subconfig, MultiConfig):
+                    if isinstance(value, dict) and not isinstance(value, Config):
+                        for subconfig_key, value in value.items():
+                            if subconfig_key in subconfig:
+                                subconfig[subconfig_key].__ior__(value)
+                            elif isinstance(value, Config):
+                                subconfig[subconfig_key] = value
+                    else:
+                        setattr(self, field, value)
+                else:
+                    setattr(self, field, value)
+        return self
+
+    def __or__(self, other):
+        copy = cp.deepcopy(self)
+        copy.__ior__(other)
+        return copy
+
+    def __iand__(self, other):
+        """
+        Update the configuration with the values from another configuration, only if fields are configured in other.
+        """
+        if isinstance(other, Config):
+            for field in self.configured.and_unconfigured:
+                if field in other.configured:
+                    setattr(self, field, getattr(other, field))
+            for field in self.configured.subconfigs:
+                if hasattr(other, field):
+                    subconfig = getattr(self, field)
+                    value = getattr(other, field)
+                    if isinstance(subconfig, Config):
+                        if isinstance(value, (Config, dict)) and not isinstance(value, MultiConfig):
+                            subconfig.__iand__(value)
+                        else:
+                            setattr(self, field, value)
+                    elif isinstance(subconfig, MultiConfig):
+                        if isinstance(value, dict) and not isinstance(value, Config):
+                            for subconfig_key, value in value.items():
+                                if subconfig_key in subconfig:
+                                    subconfig[subconfig_key].__iand__(value)
+                        else:
+                            setattr(self, field, value)
+        elif isinstance(other, dict):
+            for field in self.configured.and_unconfigured:
+                if field in other:
+                    setattr(self, field, other[field])
+            for field in self.configured.subconfigs:
+                if field in other:
+                    subconfig = getattr(self, field)
+                    value = other[field]
+                    if isinstance(subconfig, Config):
+                        if isinstance(value, (Config, dict)) and not isinstance(value, MultiConfig):
+                            subconfig.__iand__(value)
+                        else:
+                            setattr(self, field, value)
+                    elif isinstance(subconfig, MultiConfig):
+                        if isinstance(value, dict) and not isinstance(value, Config):
+                            for subconfig_key, value in value.items():
+                                if subconfig_key in subconfig:
+                                    subconfig[subconfig_key].__iand__(value)
+                        else:
+                            setattr(self, field, value)
+        return self
+
+    def __and__(self, other):
+        copy = cp.deepcopy(self)
+        copy.__iand__(other)
+        return copy
+
+    def __imul__(self, other):
+        """
+        Update only UNconfigured fields with values from another configuration (it does not matter whether the fields are configured in other).
+        """
+        if isinstance(other, dict):
+            contains = lambda o, f: f in o
+            get = lambda o, f: o[f]
+        else:
+            contains = lambda o, f: hasattr(o, f)
+            get = lambda o, f: getattr(o, f)
+        for field in self.configured.unconfigured:
+            if contains(other, field):
+                setattr(self, field, get(other, field))
+        for field in self.configured.subconfigs:
+            if contains(other, field):
+                subconfig = getattr(self, field)
+                value = get(other, field)
+                if isinstance(subconfig, Config):
+                    if isinstance(value, (Config, dict)) and not isinstance(value, MultiConfig):
+                        subconfig.__imul__(value)
+                elif isinstance(subconfig, MultiConfig) and isinstance(value, dict) and not isinstance(value, Config):
+                    for subconfig_key, value in value.items():
+                        if subconfig_key in subconfig:
+                            subconfig[subconfig_key].__imul__(value)
+        return self
+
+    def __mul__(self, other):
+        copy = cp.deepcopy(self)
+        copy.__imul__(other)
+        return copy
+
+    def __ipow__(self, other):
+        """
+        Update only UNconfigured fields with values from another configuration (it does not matter whether the fields are configured in other). Configs in MultiConfig fields that exist in other but not in self are added to self.
+        """
+        if isinstance(other, dict):
+            contains = lambda o, f: f in o
+            get = lambda o, f: o[f]
+        else:
+            contains = lambda o, f: hasattr(o, f)
+            get = lambda o, f: getattr(o, f)
+        for field in self.configured.unconfigured:
+            if contains(other, field):
+                setattr(self, field, get(other, field))
+        for field in self.configured.subconfigs:
+            if contains(other, field):
+                subconfig = getattr(self, field)
+                value = get(other, field)
+                if isinstance(subconfig, Config):
+                    if isinstance(value, (Config, dict)) and not isinstance(value, MultiConfig):
+                        subconfig.__imul__(value)
+                elif isinstance(subconfig, MultiConfig) and isinstance(value, dict) and not isinstance(value, Config):
+                    for subconfig_key, value in value.items():
+                        if subconfig_key in subconfig:
+                            subconfig[subconfig_key].__imul__(value)
+                        elif isinstance(value, Config):
+                            subconfig[subconfig_key] = value
+        return self
+
+    def __pow__(self, other):
+        copy = cp.deepcopy(self)
+        copy.__ipow__(other)
+        return copy
 
 
-F = T.TypeVar('F', bound=T.Callable)
+class ImmutableConfig(Config):
+    def __setattr__(self, key, value):
+        if self.configured:
+            raise AttributeError(f'ImmutableConfig {self} is immutable after construction.')
+        return super().__setattr__(key, value)
 
 
-def take_defaults_from_self(method: F) -> F:
-    sig = ins.signature(method)
-    @ft.wraps(method)
-    def wrapper_method(self, *args, **kwargs):
-        binding = sig.bind(self, *args, **kwargs)
-        arguments = binding.arguments
-        from_self = {k: getattr(self, k) for k in sig.parameters if k not in arguments and hasattr(self, k)}
-        arguments.update(from_self)
-        result = method(*binding.args, **binding.kwargs)
-        return result
-    return wrapper_method
+CONFIG = T.TypeVar('CONFIG')
+
+class MultiConfig(dict[str, CONFIG]):
+    def __init__(self,
+        configs_:T.Iterable[tuple[str, CONFIG]]|T.Mapping[str, CONFIG]=(),
+        /, **configs: CONFIG):
+        dict.__init__(self)
+        self.update(configs_)
+        self.update(configs)
 
 
 class ConfigJSONDecoder(json.JSONDecoder):
-    def __init__(self, module, *args, **kwargs):
-        self.module = module
+    def __init__(self, *args, **kwargs):
         self.configs = {}
         super().__init__(object_hook=self.object_hook, *args, **kwargs)
 
@@ -103,197 +415,32 @@ class ConfigJSONDecoder(json.JSONDecoder):
             return obj
 
 class ConfigJSONEncoder(json.JSONEncoder):
-    def __init__(self, module, *args, **kwargs):
-        self.module = module
+    def __init__(self, which: T.LiteralString = "all", *args, **kwargs):
+        self.which_fields = which
         super().__init__(*args, **kwargs)
 
     def default(self, obj):
         if isinstance(obj, Config):
-            json = {field.name: getattr(obj, field.name) for field in dc.fields(obj)}
-            json['__class__'] = get_import_path(obj.__class__)
-            imported_cls = import_obj_from_path(json['__class__'])
-            assert imported_cls is obj.__class__
+            which = dict(all='and_unconfigured_and_subconfigs').get(self.which_fields, self.which_fields)
+            fields_to_serialize = getattr(obj.configured, which)
+            json = {field: getattr(obj, field) for field in fields_to_serialize}
+            if self.which_fields == 'all':
+                cls = obj.__config_implemented__ if isinstance(obj, Implementation) else obj.__class__
+                json['__class__'] = get_import_path(cls)
+                imported_cls = import_obj_from_path(json['__class__'])
+                assert imported_cls is cls, f"Imported class {imported_cls} is not the same as the class {cls} being serialized."
             return json
         else:
             return super().default(obj)
 
 
-@config
-@dc.dataclass
-class Config:
-    base: str | pl.Path | Config | None = None
-    args: T.ClassVar[Arguments[str, T.Any]]
-    undefined: T.ClassVar[set[str]]
-    __mutable__ = True
-    # defaults: T.ClassVar[dict[str, T.Any]]
-
-    def __post_init__(self):
-        if 'base' in self.args and (config_arg := self.args.pop('base')) is not None:
-            self.base = None
-            serialized = None
-            serialized_subpath = None
-            if not hasattr(self, 'undefined'):
-                self.undefined = set()  # noqa
-            if isinstance(config_arg, str):
-                if config_arg.lstrip().startswith('{'):
-                    serialized = config_arg
-                else:
-                    config_arg, *serialized_subpath = config_arg.split(' => ')
-                    config_arg = pl.Path(config_arg).expanduser()
-            if isinstance(config_arg, pl.Path):
-                if config_arg.exists():
-                    if config_arg.is_dir():
-                        config_arg = config_arg / 'config.json'
-                        if not config_arg.exists():
-                            raise ValueError(f'base is a directory that does not contain a config.json: {config_arg}')
-                    serialized = config_arg.read_text()
-                    self.base = str(config_arg)
-                    self.undefined.discard('base')
-                else:
-                    raise ValueError(f'base is not a path that exists: {config_arg}')
-            if serialized is not None:
-                decoder = ConfigJSONDecoder(module=sys.modules[self.__class__.__module__])
-                branch = decoder.decode(serialized)
-                if serialized_subpath:
-                    if serialized_subpath == ('',):
-                        loaded_config = branch
-                    else:
-                        for subpath in serialized_subpath:
-                            if isinstance(branch, dict):
-                                branch = branch[subpath]
-                            elif isinstance(branch, list):
-                                branch = branch[int(subpath)]
-                            else:
-                                branch = getattr(branch, subpath)
-                        loaded_config = branch
-                else:
-                    loaded_config = decoder.configs[self.__class__][-1]
-                config_base = vars(loaded_config)
-            elif isinstance(config_arg, Config):
-                config_base = vars(config_arg)                  # copy Config
-            elif isinstance(config_arg, dict):
-                config_base = config_arg                        # copy dict as Config
-            else:
-                config_base = vars(config_arg)                  # copy object as Config
-            for var in (field.name for field in dc.fields(self) if field.name in config_base):
-                self_val = getattr(self, var)
-                base_val = config_base[var]
-                if var in self.undefined:
-                    if isinstance(self_val, Config):
-                        self_val.base = base_val
-                        self_val.args = dict(config=base_val) # noqa
-                        self_val.__post_init__()
-                        del self_val.args
-                    else:
-                        setattr(self, var, base_val)
-                elif isinstance(self_val, Config):
-                    self_val.base = base_val
-                    self_val.args = dict(config=base_val)  # noqa
-                    self_val.__post_init__()
-                    del self_val.args
-        else:
-            self.undefined = {f.name for f in dc.fields(self) if f.name not in self.args}  # noqa
-
-    def dict(self):
-        module = self.__class__.__module__
-        encoder = ConfigJSONEncoder(module=sys.modules[module])
-        serialized = encoder.default(self)
-        return serialized
-
-    def json(self, indent=2):
-        module = self.__class__.__module__
-        encoder = ConfigJSONEncoder(module=sys.modules[module], indent=indent)
-        serialized = encoder.encode(self)
-        return serialized
-
-    def save(self, path:str|pl.Path=None, indent:int|None=2):
-        serialized = self.json(indent=indent)
-        if path is not None:
-            path = pl.Path(path).expanduser()
-        elif self.base:
-            path = pl.Path(self.base)
-        else:
-            raise ValueError('No path provided and no base path found for saving config.')
-        path.write_text(serialized)
-        return serialized
-
-
-@config
-@dc.dataclass
-class ImmutableConfig(Config):
-    __mutable__ = False
-
-    def __setattr__(self, key, value):
-        if not getattr(self, '__mutable__', True):
-            raise AttributeError(f'ImmutableConfig {self} is immutable.')
-        super().__setattr__(key, value)
-
-
-
-def default(x) -> ...:
-    if callable(x) and getattr(x, '__name__', None) == "<lambda>":
-        return dc.field(default_factory=x)
-    else:
-        # if isinstance(x, Config):
-        #     x.undefined = {f.name for f in dc.fields(x)} # noqa
-        return dc.field(default_factory=ft.partial(cp.deepcopy, x))
-
-
-
 if __name__ == '__main__':
 
-    vars().update(dataclass=config) # noqa
+    @dc.dataclass
+    class Foo(Config):
+        x: int = 1
+        y: int = 2
 
-    @dataclass
-    class A(Config):
-        x: int = -1
-        y: int|float = 1
-        z: list[str] = dc.field(default_factory=list)
+    foo = Foo()
 
-        def __post_init__(self):
-            for base in A.__bases__: base.__post_init__(self) # noqa
-            print(f'{self.args = }')
-
-        @take_defaults_from_self
-        def foo(self, x=None, z=None):
-            print('Foo!', f'{x = }', f'{z = }')
-            self.x = x
-            self.z = z
-
-        def _set_y(self, value):
-            return value * 2
-
-
-    @dataclass
-    class B(A):
-        z: list[str] = dc.field(default_factory=lambda: [1, 2, 3])
-
-
-    @dataclass
-    class C(Config):
-        a: A = None
-        b: B = None
-
-    a = A(x=1, y=2)
-    print(f'{a = }')
-    print(f'{vars(a) = }')
-    b = B(x=8)
-    print(f'{b = }')
-
-    b.foo(3)
-    b.foo(z=[7, 9])
-
-    c = C(a=a, b=b)
-
-    cereal = c.save()
-    print(cereal)
-    c2 = C(cereal, b=B(y=92.4))
-    print(c2)
-    print(c2.save())
-
-
-
-
-
-
-
+    print(f'{foo = }')
