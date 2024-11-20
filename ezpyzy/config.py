@@ -75,6 +75,23 @@ class Configured:
     def __iter__(self):
         return iter(self.configured)
 
+    def __setitem__(self, key, value):
+        if isinstance(value, Config):
+            self.subconfigs[key] = None
+            self.and_unconfigured_and_subconfigs[key] = None
+            self.configured.pop(key, None)
+            self.and_unconfigured.pop(key, None)
+        else:
+            self.and_unconfigured[key] = None
+            self.and_unconfigured_and_subconfigs[key] = None
+            self.subconfigs.pop(key, None)
+
+    def __delitem__(self, key):
+        self.configured.pop(key, None)
+        self.and_unconfigured.pop(key, None)
+        self.subconfigs.pop(key, None)
+        self.and_unconfigured_and_subconfigs.pop(key, None)
+
     def __iadd__(self, field: str):
         if field not in self.and_unconfigured_and_subconfigs:
             pass
@@ -84,6 +101,7 @@ class Configured:
             self.and_unconfigured.pop(field, None)
         else:
             self.configured[field] = None
+            self.and_unconfigured[field] = None
             self.subconfigs.pop(field, None)
         return self
 
@@ -95,6 +113,7 @@ class Configured:
             self.and_unconfigured.pop(field, None)
         else:
             self.subconfigs.pop(field, None)
+            self.and_unconfigured[field] = None
         self.configured.pop(field, None)
         return self
 
@@ -164,6 +183,7 @@ class ConfigMeta(type):
         if ImplementsConfig in bases:
             impl_index = bases.index(ImplementsConfig)
             implmented_config_cls = bases[impl_index + 1]
+            fields = {field.name: None for i, field in enumerate(dc.fields(implmented_config_cls)) if i > 0}
             if hasattr(implmented_config_cls, '__implementation__') and implmented_config_cls.__implementation__ != cls:
                 raise TypeError(f"Defined Implementation {cls} of Config {implmented_config_cls} but Config already has an implmentation: {implmented_config_cls.__implementation__}.")
             elif not issubclass(implmented_config_cls, Config):
@@ -175,8 +195,9 @@ class ConfigMeta(type):
         def __init__(self, *args, **kwargs):
             arguments = init_sig.bind(self, *args, **kwargs).arguments
             self.configured = Configured(object=self, fields=fields, args=arguments)
-            for argument in arguments:
-                self.configured += argument
+            for i, argument in enumerate(arguments):
+                if i > 0:
+                    self.configured += argument
             if hasattr(self, '__config_implemented__'):
                 ...
             init(self, *args, **kwargs) # noqa
@@ -214,15 +235,31 @@ class Config(metaclass=ConfigMeta):
             '''load base from Config instance, JSON dict, or other object'''
             base = self.base
             self.base = None
+        del self.configured['base']
         self **= base
 
-    def __setattr__(self, key, value):
-        super().__setattr__(key, value)
+    def __iter__(self):
+        return iter(self.configured.and_unconfigured_and_subconfigs)
+
+    def __getitem__(self, item: str):
+        return getattr(self, item)
+
+    def __setitem__(self, key: str, value):
+        object.__setattr__(self, key, value)
         if hasattr(self, 'configured'):
+            self.configured[key] = value
+
+    def __setattr__(self, key, value):
+        object.__setattr__(self, key, value)
+        if hasattr(self, 'configured'):
+            if isinstance(value, Config):
+                self.configured[key] = value
             if self.configured:
                 self.configured.__iadd__(key)
             elif isinstance(value, (Config, MultiConfig)):
                 self.configured.__isub__(key)
+            elif key in self.configured.subconfigs:
+                self.configured -= key
         return
 
     def __ior__(self, other):
@@ -383,7 +420,7 @@ class Config(metaclass=ConfigMeta):
 
 class ImmutableConfig(Config):
     def __setattr__(self, key, value):
-        if self.configured:
+        if hasattr(self, 'configured') and self.configured:
             raise AttributeError(f'ImmutableConfig {self} is immutable after construction.')
         return super().__setattr__(key, value)
 

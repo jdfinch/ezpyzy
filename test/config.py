@@ -1,8 +1,12 @@
 
+
+
 from ezpyzy.config import Config, MultiConfig, ImplementsConfig
 import ezpyzy as ez
 import dataclasses as dc
 import textwrap as tw
+
+import typing as T
 
 
 with ez.test("Define Config", crash=True):
@@ -203,35 +207,31 @@ with ez.test("Inherit and Extend Nested Config with Overrides"):
 
 with ez.test("Define Multiple Subconfigs with Config dict"):
     @dc.dataclass
+    class TrainingStages(Config):
+        finetuning: Training = Training(epochs=3)
+
+    @dc.dataclass
+    class IHaveTwoTrainingStages(TrainingStages):
+        pretraining: Training = Training(shuffle=False)
+        refinement: Training = Training(epochs=9)
+
+    @dc.dataclass
     class MultipleTraining(Config):
         groupname: str = None
-        stages: MultiConfig[Training] = MultiConfig(
-            pretraining=Training(shuffle=False),
-            finetuning=Training(epochs=3),
-        )
+        stages: TrainingStages = IHaveTwoTrainingStages()
         metrics: list[str] = ['accuracy']
 
 with ez.test("Construct Multiple Subconfigs"):
     multi_train_a = MultipleTraining(groupname='multi_a')
+    multi_train_a.stages.last_stage = Training(epochs=99)
     assert multi_train_a.groupname == 'multi_a'
-    assert multi_train_a.stages['pretraining'].shuffle == False
-    assert multi_train_a.stages['pretraining'].epochs == 1
-    assert multi_train_a.stages['pretraining'].tags == ['training']
-    assert multi_train_a.stages['finetuning'].shuffle == True
-    assert multi_train_a.stages['finetuning'].epochs == 3
-    assert multi_train_a.stages['finetuning'].tags == ['training']
-    assert multi_train_a.metrics == ['accuracy']
-
-with ez.test("Evolve Multiple Subconfigs"):
-    multi_train_b = MultipleTraining(multi_train_a,
-        stages=MultiConfig(finetuning=Training(tags=['ft'])))
-    assert multi_train_b.groupname == 'multi_a'
-    assert multi_train_b.stages['pretraining'].shuffle == False
-    assert multi_train_b.stages['pretraining'].epochs == 1
-    assert multi_train_b.stages['pretraining'].tags == ['training']
-    assert multi_train_b.stages['finetuning'].shuffle == True
-    assert multi_train_b.stages['finetuning'].epochs == 3
-    assert multi_train_b.stages['finetuning'].tags == ['ft']
+    assert len(list(multi_train_a.stages)) == 4
+    assert [multi_train_a.stages[s] for s in multi_train_a.stages] == [
+        Training(epochs=3),
+        Training(shuffle=False),
+        Training(epochs=9),
+        Training(epochs=99),
+    ]
 
 with ez.test("Define a Config Implementation"):
     @dc.dataclass
@@ -244,11 +244,11 @@ with ez.test("Define a Config Implementation"):
     assert Training.__implementation__ is ActuallyTrain
 
 with ez.test("Construct Implementation"):
-    actually_train_a = ActuallyTrain(epochs=5)
+    actually_train_a = ActuallyTrain(n_processes=2, epochs=5)
     assert actually_train_a.shuffle == True
     assert actually_train_a.epochs == 5
     assert actually_train_a.tags == ['training']
-    assert actually_train_a.n_processes == 1
+    assert actually_train_a.n_processes == 2
     assert actually_train_a.epochs_run == list(range(5))
 
 with ez.test("Save Implementation and Load as Config Only"):
@@ -258,6 +258,37 @@ with ez.test("Save Implementation and Load as Config Only"):
     assert config_only.epochs == 5
     assert config_only.tags == ['training']
     assert not hasattr(config_only, 'n_processes')
+
+
+with ez.test("Alternative Config: Strategy Override"):
+    @dc.dataclass
+    class BeamDecoding(Config):
+        name: str = 'beam'
+        k: int = 5
+
+    @dc.dataclass
+    class NoRepeatDecoding(Config):
+        name: str = 'norepeat'
+        alpha: float = 0.6
+
+    @dc.dataclass
+    class Model(Config):
+        max_out: int = 16
+        decoding: T.Union[BeamDecoding, NoRepeatDecoding] = BeamDecoding()
+
+    model_a = Model(max_out=3)
+    assert model_a.decoding.name == 'beam'
+    assert model_a.decoding.k == 5
+    model_b = Model(decoding=NoRepeatDecoding(alpha=0.7))
+    assert model_b.decoding.name == 'norepeat'
+    assert model_b.decoding.alpha == 0.7
+    model_a *= model_b
+    print(model_a.decoding)
+    assert isinstance(model_a.decoding, NoRepeatDecoding)
+    assert model_a.decoding.name == 'norepeat'
+    assert model_a.decoding.alpha == 0.7
+
+
 
 
 
