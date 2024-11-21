@@ -33,6 +33,7 @@ class ConfigFields(dict[str, None]):
         dict.__init__(self)
         self.object = object
         self._which_fields_serialization_strategy = which_fields_serialization_strategy
+        self.has = FieldTester(self)
 
     def dict(self):
         encoder = ConfigJSONEncoder(which=self._which_fields_serialization_strategy)

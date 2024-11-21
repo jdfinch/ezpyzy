@@ -301,7 +301,7 @@ with ez.test("Test Setters"):
 
         def _set_actual_batch_size(self, batch_size):
             if not self.configured:
-                if 'gas' in self.configured and 'actual_batch_size' not in self.configured:
+                if 'gas' in self.configured and self.configured.unconfigured.has.actual_batch_size:
                     return self.effective_batch_size // self.gas
                 elif 'actual_batch_size' in self.configured and 'gas' not in self.configured:
                     self._gas = self.effective_batch_size // batch_size
