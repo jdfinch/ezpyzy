@@ -312,9 +312,9 @@ with ez.test("Test Setters"):
 
         def _set_gas(self, gas):
             if not self.configured:
-                if 'actual_batch_size' in self.configured and 'gas' not in self.configured:
+                if self.configured.has.actual_batch_size and not self.configured.has.gas:
                     return self.effective_batch_size // self.actual_batch_size
-                elif 'gas' in self.configured and 'actual_batch_size' not in self.configured:
+                elif self.configured.has.gas and not self.configured.has.actual_batch_size:
                     self._actual_batch_size = self.effective_batch_size // gas
                 return gas
             else:

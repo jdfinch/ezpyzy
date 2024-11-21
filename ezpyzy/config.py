@@ -54,15 +54,27 @@ class ConfigFields(dict[str, None]):
         return serialized
 
 
-class Configured:
+class FieldTester:
+    def __init__(self, object):
+        self.__object = object
+    def __getattr__(self, field):
+        return field in self.__object
+    def __deepcopy__(self, memodict={}):
+        return FieldTester(self.__object)
+
+
+O = T.TypeVar('O', bound='Config')
+
+class Configured(T.Generic[O]):
     def __init__(self, object, fields, args):
-        self.object: Config = object
+        self.object: O = object
         self.subconfigs: ConfigFields[str, None] = ConfigFields(object, 'subconfigs')
         self.and_unconfigured: ConfigFields[str, None] = ConfigFields(object, 'and_unconfigured')
         self.configured: ConfigFields[str, None] = ConfigFields(object, 'configured')
         self.initialized: bool = False
         self._configuring: bool = False
         self.args: dict[str, T.Any]|None = args
+        self.has: O = FieldTester(self) # noqa
         for field in fields:
             self.set(field, configured=field in args)
 
@@ -201,7 +213,7 @@ class ConfigMeta(type):
 
 @dc.dataclass
 class Config(metaclass=ConfigMeta):
-    configured: T.ClassVar[Configured]
+    configured: T.ClassVar[Configured[T.Self]]
     base: str | pl.Path | 'Config' | None = None
 
     def __post_init__(self):
