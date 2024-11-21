@@ -291,6 +291,37 @@ with ez.test("Alternative Config: Strategy Override"):
     assert model_a.decoding.alpha == 0.7
 
 
+with ez.test("Test Setters"):
+    @dc.dataclass
+    class Generator(ez.Config):
+        name: str = 'gen'
+        actual_batch_size: int = 1
+        gas: int = 1
+        effective_batch_size: int = 16
+
+        def _set_actual_batch_size(self, batch_size):
+            if 'gas' not in self.configured:
+                with self.configured.adding_defaults():
+                    self._gas = self.effective_batch_size // batch_size
+            return batch_size
+
+        def _set_gas(self, gas):
+            if 'actual_batch_size' in self.configured:
+                return self.gas
+            elif 'gas' not in self.configured:
+                return self.gas
+            else:
+                with self.configured.adding_defaults():
+                    self._actual_batch_size = self.effective_batch_size // gas
+                return gas
+
+    generator = Generator(actual_batch_size=2)
+    assert generator.actual_batch_size == 2
+    assert generator.gas == 8
+    generator.actual_batch_size = 4
+    assert generator.actual_batch_size == 4
+    assert generator.gas == 4
+
 
 
 

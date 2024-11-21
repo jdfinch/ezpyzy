@@ -10,7 +10,7 @@ import copy as cp
 import functools as ft
 import re
 
-from ezpyzy.setter import setters
+from ezpyzy.setter import setter, RawSetter
 from ezpyzy.import_path import get_import_path, import_obj_from_path
 
 import typing as T
@@ -161,7 +161,16 @@ class ConfigMeta(type):
                 attrs[attr] = default(default_value)
         cls = super().__new__(cls, name, bases, attrs)
         cls = dc.dataclass(cls) # noqa
-        cls = setters(cls)
+        for name, value in list(cls.__dict__.items()):
+            if callable(value) and name.startswith('_set_'):
+                attr_name = name[len('_set_'):]
+                set_descriptor = setter(value, attr_name)
+                setattr(cls, attr_name, set_descriptor)
+                private_attr_name = '_' + attr_name
+                raw_set_descriptor = RawSetter(attr_name)
+                setattr(cls, private_attr_name, raw_set_descriptor)
+                attrs[attr_name] = set_descriptor
+                attrs[private_attr_name] = raw_set_descriptor
         fields = {field.name: None for i, field in enumerate(dc.fields(cls)) if i > 0}
         if ImplementsConfig in bases:
             impl_index = bases.index(ImplementsConfig)
@@ -235,6 +244,13 @@ class Config(metaclass=ConfigMeta):
         if hasattr(self, 'configured'):
             self.configured.set(key, value, configured=None)
         return
+
+    def __setitem__(self, key, value):
+        with self.configured.adding():
+            return self.__setattr__(key, value)
+
+    def __getitem__(self, key):
+        return getattr(self, key)
 
     def __divmod__(self, other):
         """
@@ -324,9 +340,12 @@ SUBCONFIGS = T.TypeVar('SUBCONFIGS')
 
 class MultiConfig(Config, T.Generic[SUBCONFIGS]):
     def __init__(self, **subconfigs: SUBCONFIGS):
-        ...
+        super().__init__()
+        with self.configured.adding():
+            for field, subconfig in subconfigs.items():
+                setattr(self, field, subconfig)
     def __iter__(self) -> T.Iterable[tuple[str, SUBCONFIGS]]:
-        ...
+        return super().__iter__()
 
 
 class ConfigJSONDecoder(json.JSONDecoder):
