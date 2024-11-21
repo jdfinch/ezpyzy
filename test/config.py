@@ -215,7 +215,7 @@ with ez.test("Define Multiple Subconfigs with Config dict"):
 
 with ez.test("Construct Multiple Subconfigs"):
     multi_train_a = MultipleTraining(groupname='multi_a')
-    with multi_train_a.stages.configured.adding():
+    with multi_train_a.stages.configured.configuring():
         multi_train_a.stages.last_stage = Training(epochs=99)
     assert multi_train_a.groupname == 'multi_a'
     assert dict(multi_train_a.stages) == {
@@ -301,9 +301,9 @@ with ez.test("Test Setters"):
 
         def _set_actual_batch_size(self, batch_size):
             if not self.configured:
-                if 'gas' in self.configured and self.configured.unconfigured.has.actual_batch_size:
+                if self.configured.has.gas and not self.configured.has.actual_batch_size:
                     return self.effective_batch_size // self.gas
-                elif 'actual_batch_size' in self.configured and 'gas' not in self.configured:
+                elif self.configured.has.actual_batch_size and not self.configured.has.gas:
                     self._gas = self.effective_batch_size // batch_size
                 return batch_size
             else:

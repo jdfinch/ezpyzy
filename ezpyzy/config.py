@@ -73,7 +73,9 @@ class Configured(T.Generic[O]):
         self.and_unconfigured: ConfigFields[str, None] = ConfigFields(object, 'and_unconfigured')
         self.configured: ConfigFields[str, None] = ConfigFields(object, 'configured')
         self.initialized: bool = False
-        self._configuring: bool = False
+        self._set_fields_configured: bool = False
+        self._set_fields_unconfigured: bool = False
+        self._do_not_configure: bool = False
         self.args: dict[str, T.Any]|None = args
         self.has: O = FieldTester(self) # noqa
         for field in fields:
@@ -89,18 +91,28 @@ class Configured(T.Generic[O]):
         return iter(self.configured)
 
     def set(self, field: str, value: T.Any = None, configured: bool = None):
-        if configured is None and not self._configuring and field not in self.and_unconfigured:
+        if configured:
+            configured = True
+        elif configured is False:
+            configured = False
+        elif self._do_not_configure:
             return
-        elif configured is None:
-            configured = self.initialized or field in self.args
+        elif self._set_fields_configured:
+            configured = True
+        elif self._set_fields_unconfigured:
+            configured = False
+        elif configured is None and field not in self.and_unconfigured:
+            return
+        else:
+            configured = self.initialized
         if isinstance(value, Config):
             self.subconfigs[field] = None
         else:
             self.subconfigs.pop(field, None)
-        if configured is True:
+        if configured:
             self.configured[field] = None
             self.and_unconfigured[field] = None
-        elif configured is False:
+        elif not configured:
             self.configured.pop(field, None)
             self.and_unconfigured[field] = None
 
@@ -109,29 +121,32 @@ class Configured(T.Generic[O]):
         self.and_unconfigured.pop(field, None)
         self.subconfigs.pop(field, None)
 
-    def adding(self):
+    def configuring(self):
         @cl.contextmanager
         def configuring_context():
-            old_initialized_value = self.initialized
-            old_configuring_value = self._configuring
-            self.initialized = True
-            self._configuring = True
+            old_configuring_value = self._set_fields_configured
+            self._set_fields_configured = True
             yield self
-            self.initialized = old_initialized_value
-            self._configuring = old_configuring_value
+            self._set_fields_configured = old_configuring_value
         return configuring_context()
 
-    def adding_defaults(self):
+    def configuring_defaults(self):
         @cl.contextmanager
         def unconfigured_context():
-            old_initialized_value = self.initialized
-            old_configuring_value = self._configuring
-            self.initialized = False
-            self._configuring = True
+            old_configuring_value = self._set_fields_unconfigured
+            self._set_fields_unconfigured = True
             yield self
-            self.initialized = old_initialized_value
-            self._configuring = old_configuring_value
+            self._set_fields_unconfigured = old_configuring_value
         return unconfigured_context()
+
+    def not_configuring(self):
+        @cl.contextmanager
+        def not_configuring_context():
+            old_configuring_value = self._do_not_configure
+            self._do_not_configure = True
+            yield self
+            self._do_not_configure = old_configuring_value
+        return not_configuring_context()
 
     @property
     def unconfigured(self) -> ConfigFields[str, None]:
@@ -203,7 +218,8 @@ class ConfigMeta(type):
                 args={k:v for i,(k,v) in enumerate(arguments.items()) if i > 0})
             if hasattr(self, '__config_implemented__'):
                 pass
-            init(self, *args, **kwargs) # noqa
+            with self.configured.not_configuring():
+                init(self, *args, **kwargs) # noqa
             self.configured.initialized = True
             self.configured.args = None
         for attr, value in attrs.items():
@@ -244,10 +260,13 @@ class Config(metaclass=ConfigMeta):
         self ^= base
 
     def __call__(self, **subconfigs: Config):
-        with self.configured.adding():
+        with self.configured.configuring():
             for field, subconfig in subconfigs.items():
                 setattr(self, field, subconfig)
         return self
+
+    def __contains__(self, field: str):
+        return field in self.configured.and_unconfigured
 
     def __iter__(self):
         return iter((field, getattr(self, field)) for field in self.configured.and_unconfigured)
@@ -259,7 +278,7 @@ class Config(metaclass=ConfigMeta):
         return
 
     def __setitem__(self, key, value):
-        with self.configured.adding():
+        with self.configured.configuring():
             return self.__setattr__(key, value)
 
     def __getitem__(self, key):
@@ -354,7 +373,7 @@ SUBCONFIGS = T.TypeVar('SUBCONFIGS')
 class MultiConfig(Config, T.Generic[SUBCONFIGS]):
     def __init__(self, **subconfigs: SUBCONFIGS):
         super().__init__()
-        with self.configured.adding():
+        with self.configured.configuring():
             for field, subconfig in subconfigs.items():
                 setattr(self, field, subconfig)
     def __iter__(self) -> T.Iterable[tuple[str, SUBCONFIGS]]:
