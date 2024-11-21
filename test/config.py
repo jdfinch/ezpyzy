@@ -24,7 +24,7 @@ with ez.test("Construct Config"):
     assert train_config_b.epochs == 2
     assert train_config_b.tags == ['training']
 
-with ez.test("Evolve Config", crash=True):
+with ez.test("Evolve Config"):
     train_config_c = Training(train_config_a, tags=['training', 'new'])
     assert train_config_c.shuffle == False
     assert train_config_c.epochs == 1
@@ -38,7 +38,7 @@ with ez.test("Evolve Mutated Config"):
     assert train_config_d.tags == ['training', 'new']
 
 with ez.test("Merge Configs"):
-    train_config_e = train_config_d & train_config_b
+    train_config_e = train_config_d ^ train_config_b
     assert train_config_e.shuffle == False
     assert train_config_e.epochs == 2
     assert train_config_e.tags == ['training', 'new']
@@ -90,18 +90,12 @@ with ez.test("Evolve Nested Config"):
 
 with ez.test("Serialize All"):
     serial_all = exp_config_a.configured.json()
-
-with ez.test("Serialize Configured Only, No Subconfigs"):
-    serial_configured = exp_config_a.configured.configured.json()
-    assert serial_configured == tw.dedent('''
-    {
-      "name": "exp1"
-    }
-    ''').strip()
+    deserial_all = Experiment(serial_all)
+    assert deserial_all == exp_config_a
 
 with ez.test("Serialize Configured Only With Subconfigs"):
-    serial_configured_and_subconfigs = exp_config_a.configured.and_subconfigs.json()
-    assert serial_configured_and_subconfigs == tw.dedent('''
+    serial_configured = exp_config_a.configured.configured.json()
+    assert serial_configured == tw.dedent('''
     {
       "name": "exp1",
       "training": {
@@ -110,52 +104,50 @@ with ez.test("Serialize Configured Only With Subconfigs"):
     }
     ''').strip()
 
-with ez.test("Serialize Configured and Unconfigured, No Subconfigs"):
-    serial_no_subconfigs = exp_config_a.configured.and_unconfigured.json()
-    assert serial_no_subconfigs == tw.dedent('''
+with ez.test("Serialize Configured and Unconfigured, No Class Info"):
+    serial_all_no_cls = exp_config_a.configured.and_unconfigured.json()
+    assert serial_all_no_cls == tw.dedent('''
     {
       "name": "exp1",
+      "training": {
+        "shuffle": true,
+        "epochs": 5,
+        "tags": [
+          "training"
+        ]
+      },
       "metrics": [
         "accuracy"
       ]
     }
     ''').strip()
 
-with ez.test("Load Configured Only, No Subconfigs"):
+with ez.test("Load Configured Only"):
     exp_config_c = Experiment(serial_configured,
         training=Training(shuffle=False), metrics=['p', 'r', 'f1'])
     assert exp_config_c.name == 'exp1'
     assert exp_config_c.training.shuffle == False
-    assert exp_config_c.training.epochs == 1
+    assert exp_config_c.training.epochs == 5
     assert exp_config_c.training.tags == ['training']
     assert exp_config_c.metrics == ['p', 'r', 'f1']
-
-with ez.test("Load Configured Only With Subconfigs"):
-    exp_config_d = Experiment(serial_configured_and_subconfigs,
-        training=Training(shuffle=False), metrics=['p', 'r', 'f1'])
-    assert exp_config_d.name == 'exp1'
-    assert exp_config_d.training.shuffle == False
-    assert exp_config_d.training.epochs == 5
-    assert exp_config_d.training.tags == ['training']
-    assert exp_config_d.metrics == ['p', 'r', 'f1']
 
 with ez.test("Merge Nested Configs"):
     exp_config_e = Experiment(
         name='exp_e', training=Training(shuffle=False, epochs=6))
     exp_config_f = Experiment(
         name='exp_f', training=Training(shuffle=True, tags=['f']), metrics=['f1'])
-    exp_config_g = exp_config_e & exp_config_f
+    exp_config_g = exp_config_e >> exp_config_f
     assert exp_config_g == Experiment(
         name='exp_f', training=Training(shuffle=True, epochs=6, tags=['f']), metrics=['f1'])
-    exp_config_h = exp_config_f & exp_config_e
+    exp_config_h = exp_config_f >> exp_config_e
     assert exp_config_h == Experiment(
         name='exp_e', training=Training(shuffle=False, epochs=6, tags=['f']), metrics=['f1'])
 
 with ez.test("Merge Nested Configs, No Override"):
-    exp_config_i = exp_config_e * exp_config_f
+    exp_config_i = exp_config_e ^ exp_config_f
     assert exp_config_i == Experiment(
         name='exp_e', training=Training(shuffle=False, epochs=6, tags=['f']), metrics=['f1'])
-    exp_config_j = exp_config_f * exp_config_e
+    exp_config_j = exp_config_f ^ exp_config_e
     assert exp_config_j == Experiment(
         name='exp_f', training=Training(shuffle=True, epochs=6, tags=['f']), metrics=['f1'])
 
@@ -223,15 +215,16 @@ with ez.test("Define Multiple Subconfigs with Config dict"):
 
 with ez.test("Construct Multiple Subconfigs"):
     multi_train_a = MultipleTraining(groupname='multi_a')
-    multi_train_a.stages.last_stage = Training(epochs=99)
+    with multi_train_a.stages.configured.adding():
+        multi_train_a.stages.last_stage = Training(epochs=99)
     assert multi_train_a.groupname == 'multi_a'
-    assert len(list(multi_train_a.stages)) == 4
-    assert [multi_train_a.stages[s] for s in multi_train_a.stages] == [
-        Training(epochs=3),
-        Training(shuffle=False),
-        Training(epochs=9),
-        Training(epochs=99),
-    ]
+    assert dict(multi_train_a.stages) == {
+        'finetuning': Training(epochs=3),
+        'pretraining': Training(shuffle=False),
+        'refinement': Training(epochs=9),
+        'last_stage': Training(epochs=99),
+    }
+
 
 with ez.test("Define a Config Implementation"):
     @dc.dataclass
@@ -282,8 +275,7 @@ with ez.test("Alternative Config: Strategy Override"):
     model_b = Model(decoding=NoRepeatDecoding(alpha=0.7))
     assert model_b.decoding.name == 'norepeat'
     assert model_b.decoding.alpha == 0.7
-    model_a *= model_b
-    print(model_a.decoding)
+    model_a <<= model_b
     assert isinstance(model_a.decoding, NoRepeatDecoding)
     assert model_a.decoding.name == 'norepeat'
     assert model_a.decoding.alpha == 0.7
