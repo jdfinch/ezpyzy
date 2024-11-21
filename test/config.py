@@ -225,6 +225,17 @@ with ez.test("Construct Multiple Subconfigs"):
         'last_stage': Training(epochs=99),
     }
 
+with ez.test("Define Multiple Subconfigs Without New Class"):
+    multi_training = TrainingStages()(
+        pretraining=Training(epochs=4),
+        refinement=Training(epochs=10),
+    )
+    assert dict(multi_training) == {
+        'finetuning': Training(epochs=3),
+        'pretraining': Training(epochs=4),
+        'refinement': Training(epochs=10),
+    }
+
 
 with ez.test("Define a Config Implementation"):
     @dc.dataclass
@@ -252,7 +263,6 @@ with ez.test("Save Implementation and Load as Config Only"):
     assert config_only.tags == ['training']
     assert not hasattr(config_only, 'n_processes')
 
-
 with ez.test("Alternative Config: Strategy Override"):
     @dc.dataclass
     class BeamDecoding(Config):
@@ -279,6 +289,10 @@ with ez.test("Alternative Config: Strategy Override"):
     assert isinstance(model_a.decoding, NoRepeatDecoding)
     assert model_a.decoding.name == 'norepeat'
     assert model_a.decoding.alpha == 0.7
+
+
+
+
 
 
 

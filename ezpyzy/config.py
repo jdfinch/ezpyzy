@@ -222,8 +222,9 @@ class Config(metaclass=ConfigMeta):
         self ^= base
 
     def __call__(self, **subconfigs: Config):
-        for field, subconfig in subconfigs.items():
-            setattr(self, field, subconfig)
+        with self.configured.adding():
+            for field, subconfig in subconfigs.items():
+                setattr(self, field, subconfig)
         return self
 
     def __iter__(self):
