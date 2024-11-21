@@ -79,7 +79,7 @@ class Configured:
         if configured is None and not self._configuring and field not in self.and_unconfigured:
             return
         elif configured is None:
-            configured = self.initialized
+            configured = self.initialized or field in self.args
         if isinstance(value, Config):
             self.subconfigs[field] = None
         else:

@@ -300,27 +300,40 @@ with ez.test("Test Setters"):
         effective_batch_size: int = 16
 
         def _set_actual_batch_size(self, batch_size):
-            if 'gas' not in self.configured:
-                with self.configured.adding_defaults():
+            if not self.configured:
+                if 'gas' in self.configured and 'actual_batch_size' not in self.configured:
+                    return self.effective_batch_size // self.gas
+                elif 'actual_batch_size' in self.configured and 'gas' not in self.configured:
                     self._gas = self.effective_batch_size // batch_size
-            return batch_size
+                return batch_size
+            else:
+                self._gas = self.effective_batch_size // batch_size
+                return batch_size
 
         def _set_gas(self, gas):
-            if 'actual_batch_size' in self.configured:
-                return self.gas
-            elif 'gas' not in self.configured:
-                return self.gas
-            else:
-                with self.configured.adding_defaults():
+            if not self.configured:
+                if 'actual_batch_size' in self.configured and 'gas' not in self.configured:
+                    return self.effective_batch_size // self.actual_batch_size
+                elif 'gas' in self.configured and 'actual_batch_size' not in self.configured:
                     self._actual_batch_size = self.effective_batch_size // gas
+                return gas
+            else:
+                self._actual_batch_size = self.effective_batch_size // gas
                 return gas
 
     generator = Generator(actual_batch_size=2)
     assert generator.actual_batch_size == 2
     assert generator.gas == 8
+    assert 'actual_batch_size' in generator.configured
+    assert 'gas' not in generator.configured
     generator.actual_batch_size = 4
     assert generator.actual_batch_size == 4
     assert generator.gas == 4
+    generator.gas = 2
+    assert generator.actual_batch_size == 8
+    assert generator.gas == 2
+    assert 'actual_batch_size' in generator.configured
+    assert 'gas' in generator.configured
 
 
 
