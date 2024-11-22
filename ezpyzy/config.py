@@ -277,6 +277,9 @@ class Config(metaclass=ConfigMeta):
             self.configured.set(key, value, configured=None)
         return
 
+    def __getattr__(self, item):
+        raise AttributeError(f"Config {self} has no attribute {item}.")
+
     def __setitem__(self, key, value):
         with self.configured.configuring():
             return self.__setattr__(key, value)
