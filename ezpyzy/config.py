@@ -10,7 +10,7 @@ import copy as cp
 import functools as ft
 import re
 
-from ezpyzy.setter import RawSetter, FieldSetter, Setter
+from ezpyzy.setter import RawSetter, Setter
 from ezpyzy.import_path import get_import_path, import_obj_from_path
 
 import typing as T
@@ -64,6 +64,19 @@ class FieldTester:
         return FieldTester(self.__object)
 
 
+OA = T.TypeVar('OA', bound='Config')
+class Args(T.Generic[OA], dict):
+    has: OA
+    def __init__(self, obj: OA, args):
+        dict.__init__(self, args) # noqa
+        self.has: OA = FieldTester(self) # noqa
+        self.__obj: OA = obj
+    def __deepcopy__(self, memodict={}):
+        return Args(self.__obj, self)
+
+empty = object()
+
+
 O = T.TypeVar('O', bound='Config')
 
 class Configured(T.Generic[O]):
@@ -76,10 +89,10 @@ class Configured(T.Generic[O]):
         self._set_fields_configured: bool = False
         self._set_fields_unconfigured: bool = False
         self._do_not_configure: bool = False
-        self.args: dict[str, T.Any]|None = args
+        self.args: Args[O]|None = Args(object, args)
         self.has: O = FieldTester(self) # noqa
         for field in fields:
-            self.set(field, configured=field in args)
+            self.set(field, args.get(field, empty), configured=field in args)
 
     def __bool__(self):
         return self.initialized
@@ -90,7 +103,7 @@ class Configured(T.Generic[O]):
     def __iter__(self):
         return iter(self.configured)
 
-    def set(self, field: str, value: T.Any = None, configured: bool = None):
+    def set(self, field: str, value: T.Any = empty, configured: bool = None):
         if configured:
             configured = True
         elif configured is False:
@@ -107,7 +120,7 @@ class Configured(T.Generic[O]):
             configured = self.initialized
         if isinstance(value, Config):
             self.subconfigs[field] = None
-        else:
+        elif value is not empty:
             self.subconfigs.pop(field, None)
         if configured:
             self.configured[field] = None
@@ -184,9 +197,12 @@ class ConfigMeta(type):
         for attr, default_value in attrs.items():
             if (attr in attrs.get('__annotations__', {})
                 and default_value is not None
-                and not isinstance(default_value, (str, int, float, bool, frozenset, dc.Field))
+                and not isinstance(default_value, (str, int, float, bool, dc.Field))
                 and ClassVar_pattern.search(str(attrs['__annotations__'][attr])) is None
             ):
+                if isinstance(default_value, Config):
+                    for field in default_value.configured.and_unconfigured:
+                        default_value.configured.set(field, configured=False)
                 attrs[attr] = default(default_value)
         inherited_setters = {}
         inherited_fields = set()
@@ -298,7 +314,7 @@ class Config(metaclass=ConfigMeta):
         return
 
     def __getattr__(self, item):
-        raise AttributeError(f"Config {self} has no attribute {item}.")
+        raise AttributeError(f"Config has no attribute {item}.")
 
     def __setitem__(self, key, value):
         with self.configured.configuring():
