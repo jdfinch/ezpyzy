@@ -10,7 +10,7 @@ import copy as cp
 import functools as ft
 import re
 
-from ezpyzy.setter import setter, RawSetter
+from ezpyzy.setter import RawSetter, FieldSetter, Setter
 from ezpyzy.import_path import get_import_path, import_obj_from_path
 
 import typing as T
@@ -183,22 +183,30 @@ class ConfigMeta(type):
     def __new__(cls, name, bases: tuple, attrs):
         for attr, default_value in attrs.items():
             if (attr in attrs.get('__annotations__', {})
-                and ClassVar_pattern.search(str(attrs['__annotations__'][attr])) is None
+                and default_value is not None
                 and not isinstance(default_value, (str, int, float, bool, frozenset, dc.Field))
+                and ClassVar_pattern.search(str(attrs['__annotations__'][attr])) is None
             ):
                 attrs[attr] = default(default_value)
+        inherited_setters = {}
+        inherited_fields = set()
+        for base in bases:
+            if dc.is_dataclass(base):
+                for field in dc.fields(base):
+                    if (isinstance(field.default, Setter) and field.name not in attrs and
+                        field.name not in inherited_fields and field.name not in inherited_setters
+                    ):
+                        inherited_setters[field.name] = field.default
+                        if callable(field.default.default):
+                            attrs[field.name] = dc.field(default_factory=field.default.default)
+                            attrs.setdefault('__annotations__', {})[field.name] = field.type
+                        else:
+                            attrs[field.name] = dc.field(default=field.default.default)
+                            attrs.setdefault('__annotations__', {})[field.name] = field.type
+                    else:
+                        inherited_fields.add(field.name)
         cls = super().__new__(cls, name, bases, attrs)
         cls = dc.dataclass(cls) # noqa
-        for name, value in list(cls.__dict__.items()):
-            if callable(value) and name.startswith('_set_'):
-                attr_name = name[len('_set_'):]
-                set_descriptor = setter(value, attr_name)
-                setattr(cls, attr_name, set_descriptor)
-                private_attr_name = '_' + attr_name
-                raw_set_descriptor = RawSetter(attr_name)
-                setattr(cls, private_attr_name, raw_set_descriptor)
-                attrs[attr_name] = set_descriptor
-                attrs[private_attr_name] = raw_set_descriptor
         fields = {field.name: None for i, field in enumerate(dc.fields(cls)) if i > 0}
         if ImplementsConfig in bases:
             impl_index = bases.index(ImplementsConfig)
@@ -216,15 +224,27 @@ class ConfigMeta(type):
             arguments = init_sig.bind(self, *args, **kwargs).arguments
             self.configured = Configured(object=self, fields=fields,
                 args={k:v for i,(k,v) in enumerate(arguments.items()) if i > 0})
-            if hasattr(self, '__config_implemented__'):
-                pass
             with self.configured.not_configuring():
                 init(self, *args, **kwargs) # noqa
             self.configured.initialized = True
             self.configured.args = None
-        for attr, value in attrs.items():
-            setattr(cls, attr, value)
         cls.__init__ = __init__
+        dc_fields = {field.name: field for field in dc.fields(cls)}
+        for attr, value in attrs.items():
+            if attr.startswith('_set_') and callable(value):
+                setter_name = attr[len('_set_'):]
+                if setter_name in dc_fields:
+                    field = dc_fields[setter_name]
+                    default_value = field.default if field.default_factory is dc.MISSING else field.default_factory
+                    setattr(cls, setter_name, Setter(value, setter_name, default=default_value))
+                else:
+                    setattr(cls, setter_name, Setter(value, setter_name, getattr(cls, setter_name, dc.MISSING)))
+                setattr(cls, f'_{setter_name}', RawSetter(setter_name))
+            elif attr in dc_fields:
+                setattr(cls, attr, value)
+        for setter_name, setter_descriptor in inherited_setters.items():
+            setattr(cls, setter_name, setter_descriptor)
+            setattr(cls, f'_{setter_name}', RawSetter(setter_name))
         return cls
 
 
