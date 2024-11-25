@@ -228,7 +228,9 @@ class ConfigMeta(type):
             impl_index = bases.index(ImplementsConfig)
             implmented_config_cls = bases[impl_index + 1]
             fields = {field.name: None for i, field in enumerate(dc.fields(implmented_config_cls)) if i > 0}
-            if hasattr(implmented_config_cls, '__implementation__') and implmented_config_cls.__implementation__ != cls:
+            if ('__implementation__' in implmented_config_cls.__dict__
+                and implmented_config_cls.__dict__['__implementation__'] != cls
+            ):
                 raise TypeError(f"Defined Implementation {cls} of Config {implmented_config_cls} but Config already has an implmentation: {implmented_config_cls.__implementation__}.")
             elif not issubclass(implmented_config_cls, Config):
                 raise TypeError(f"Defined Config Implementation {cls} of {implmented_config_cls}, but it is not a subclass of Config.")
@@ -273,27 +275,32 @@ class Config(metaclass=ConfigMeta):
         for arg, value in self.configured.args.items():
             if arg != 'base':
                 self.configured.set(arg, value, configured=True)
-        if not self.base:
-            return
-        if isinstance(self.base, str) and self.base.lstrip().startswith('{'):
-            '''load base from JSON str'''
-            decoder = ConfigJSONDecoder()
-            loaded = decoder.decode(self.base)
-            base = loaded
-            self.base = None
-        elif isinstance(self.base, pl.Path) or isinstance(self.base, str):
-            '''load base from file'''
-            config_path = pl.Path(self.base)
-            json_content = config_path.read_text()
-            decoder = ConfigJSONDecoder()
-            loaded = decoder.decode(json_content)
-            base = loaded
-            self.base = str(config_path)
-        else:
-            '''load base from Config instance, JSON dict, or other object'''
-            base = self.base
-            self.base = None
-        self ^= base
+        if self.base:
+            if isinstance(self.base, str) and self.base.lstrip().startswith('{'):
+                '''load base from JSON str'''
+                decoder = ConfigJSONDecoder()
+                loaded = decoder.decode(self.base)
+                base = loaded
+                self.base = None
+            elif isinstance(self.base, pl.Path) or isinstance(self.base, str):
+                '''load base from file'''
+                config_path = pl.Path(self.base)
+                json_content = config_path.read_text()
+                decoder = ConfigJSONDecoder()
+                loaded = decoder.decode(json_content)
+                base = loaded
+                self.base = str(config_path)
+            else:
+                '''load base from Config instance, JSON dict, or other object'''
+                base = self.base
+                self.base = None
+            self <<= base
+        if isinstance(self, ImplementsConfig):
+            for attr, value in vars(self).items():
+                if attr != 'base' and type(value).__dict__.get('__implementation__') is not None:
+                    implementation_cls = value.__implementation__
+                    implementation_obj = implementation_cls(base=value)
+                    setattr(self, attr, implementation_obj)
 
     def __call__(self, **subconfigs: Config):
         with self.configured.configuring():
