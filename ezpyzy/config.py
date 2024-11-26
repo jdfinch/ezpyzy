@@ -409,7 +409,7 @@ class Config(metaclass=ConfigMeta):
 
 class ImmutableConfig(Config):
     def __setattr__(self, key, value):
-        if hasattr(self, 'configured') and self.configured:
+        if hasattr(self, 'configured') and 'key' in self.configured.and_unconfigured:
             raise AttributeError(f'ImmutableConfig {self} is immutable after construction.')
         return super().__setattr__(key, value)
 
