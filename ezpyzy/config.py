@@ -320,8 +320,8 @@ class Config(metaclass=ConfigMeta):
             self.configured.set(key, value, configured=None)
         return
 
-    def __getattr__(self, item):
-        raise AttributeError(f"Config has no attribute {item}.")
+    # def __getattr__(self, item):
+    #     raise AttributeError(f"Config has no attribute {item}.")
 
     def __setitem__(self, key, value):
         with self.configured.configuring():
@@ -404,6 +404,12 @@ class Config(metaclass=ConfigMeta):
     def __xor__(self, other):
         copy = cp.deepcopy(self)
         copy.__ixor__(other)
+        return copy
+
+    def __pos__(self) -> T.Self:
+        copy = cp.copy(self)
+        if hasattr(copy, 'configured'):
+            del copy.configured
         return copy
 
 
