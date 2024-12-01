@@ -314,6 +314,9 @@ class Config(metaclass=ConfigMeta):
     def __iter__(self):
         return iter((field, getattr(self, field)) for field in self.configured.and_unconfigured)
 
+    def __len__(self):
+        return len(self.configured.and_unconfigured)
+
     def __setattr__(self, key, value):
         object.__setattr__(self, key, value)
         if hasattr(self, 'configured'):
