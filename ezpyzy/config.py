@@ -194,6 +194,8 @@ class ConfigMeta(type):
     configured: Configured
 
     def __new__(cls, name, bases: tuple, attrs):
+        if name == 'Config':
+            del attrs['__getattr__']
         for attr, default_value in attrs.items():
             if (attr in attrs.get('__annotations__', {})
                 and default_value is not None
@@ -221,9 +223,13 @@ class ConfigMeta(type):
                             attrs.setdefault('__annotations__', {})[field.name] = field.type
                     else:
                         inherited_fields.add(field.name)
+        # if 'MultiConfig' in {base.__name__ for base in bases} and '__init__' not in attrs:
+        #     def __multiconfig_subinit__(self, **subconfigs):
+        #         super(type(self), self).__init__(**subconfigs)
+        #     attrs['__init__'] = __multiconfig_subinit__
         cls = super().__new__(cls, name, bases, attrs)
         cls = dc.dataclass(cls) # noqa
-        fields = {field.name: None for i, field in enumerate(dc.fields(cls)) if i > 0}
+        fields = {field.name: None for i, field in enumerate(dc.fields(cls)) if i > 0} # noqa
         if ImplementsConfig in bases:
             impl_index = bases.index(ImplementsConfig)
             implmented_config_cls = bases[impl_index + 1]
@@ -272,9 +278,6 @@ class Config(metaclass=ConfigMeta):
     base: str | pl.Path | 'Config' | None = None
 
     def __post_init__(self):
-        for arg, value in self.configured.args.items():
-            if arg != 'base':
-                self.configured.set(arg, value, configured=True)
         if self.base:
             if isinstance(self.base, str) and self.base.lstrip().startswith('{'):
                 '''load base from JSON str'''
@@ -323,8 +326,8 @@ class Config(metaclass=ConfigMeta):
             self.configured.set(key, value, configured=None)
         return
 
-    # def __getattr__(self, item):
-    #     raise AttributeError(f"Config has no attribute {item}.")
+    def __getattr__(self, item):
+        raise AttributeError(f"Config has no attribute {item}.")
 
     def __setitem__(self, key, value):
         with self.configured.configuring():
@@ -426,11 +429,11 @@ class ImmutableConfig(Config):
 SUBCONFIGS = T.TypeVar('SUBCONFIGS')
 
 class MultiConfig(Config, T.Generic[SUBCONFIGS]):
-    def __init__(self, **subconfigs: SUBCONFIGS):
-        super().__init__()
-        with self.configured.configuring():
-            for field, subconfig in subconfigs.items():
-                setattr(self, field, subconfig)
+    # def __init__(self, **subconfigs: SUBCONFIGS):
+    #     super().__init__()
+    #     with self.configured.configuring():
+    #         for field, subconfig in subconfigs.items():
+    #             setattr(self, field, subconfig)
     def __iter__(self) -> T.Iterable[tuple[str, SUBCONFIGS]]:
         return super().__iter__()
 
@@ -444,7 +447,12 @@ class ConfigJSONDecoder(json.JSONDecoder):
         if '__class__' in obj:
             cls = import_obj_from_path(obj.pop('__class__'))
             fields = {field.name for field in dc.fields(cls)}
-            config = cls(**{var: val for var, val in obj.items() if var in fields})
+            config = cls(**{var: val for var, val in obj.items() if var in fields}) # noqa
+            if isinstance(config, MultiConfig):
+                for var, val in obj.items():
+                    if isinstance(config, MultiConfig) and isinstance(val, Config):
+                        setattr(config, var, val)
+                        config.configured.set(var, val, configured=True)
             self.configs.setdefault(cls, []).append(config)
             return config
         else:
