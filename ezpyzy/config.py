@@ -472,7 +472,10 @@ class ConfigJSONEncoder(json.JSONEncoder):
                 cls = obj.__config_implemented__ if isinstance(obj, ImplementsConfig) else obj.__class__
                 json['__class__'] = get_import_path(cls)
                 imported_cls = import_obj_from_path(json['__class__'])
-                assert imported_cls is cls, f"Imported class {imported_cls} is not the same as the class {cls} being serialized."
+                assert (imported_cls is cls
+                        or cls.__module__ == '__main__'
+                        and cls.__name__ == imported_cls.__name__
+                ), f"Imported class {imported_cls} is not the same as the class {cls} being serialized."
             return json
         else:
             return super().default(obj)
