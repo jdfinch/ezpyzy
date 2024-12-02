@@ -4,13 +4,10 @@ import pathlib as pl
 import importlib as imp
 
 def get_import_path(cls_or_fn):
-    name = cls_or_fn.__name__
-    module = sys.modules[cls_or_fn.__module__]
-    file = module.__file__
-    cwd = pl.Path.cwd()
-    path = pl.Path(file).relative_to(cwd)
-    import_path = '.'.join((*path.parts[:-1], path.stem, name))
-    return import_path
+    module = cls_or_fn.__module__
+    if module is None or module == str.__class__.__module__:
+        return cls_or_fn.__qualname__
+    return module + '.' + cls_or_fn.__qualname__
 
 def import_obj_from_path(import_path):
     module, name = import_path.rsplit('.', 1)
