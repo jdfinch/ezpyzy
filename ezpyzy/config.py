@@ -429,11 +429,11 @@ class ImmutableConfig(Config):
 SUBCONFIGS = T.TypeVar('SUBCONFIGS')
 
 class MultiConfig(Config, T.Generic[SUBCONFIGS]):
-    # def __init__(self, **subconfigs: SUBCONFIGS):
-    #     super().__init__()
-    #     with self.configured.configuring():
-    #         for field, subconfig in subconfigs.items():
-    #             setattr(self, field, subconfig)
+    def __init__(self, **subconfigs: SUBCONFIGS):
+        super().__init__()
+        with self.configured.configuring():
+            for field, subconfig in subconfigs.items():
+                setattr(self, field, subconfig)
     def __iter__(self) -> T.Iterable[tuple[str, SUBCONFIGS]]:
         return super().__iter__()
 
