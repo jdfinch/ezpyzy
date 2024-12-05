@@ -11,7 +11,7 @@ from ezpyzy.batch import batching, batched
 from ezpyzy.bind import bind
 from ezpyzy.cache import cache
 from ezpyzy.cat import cat
-from ezpyzy.config import Config, MultiConfig, ImmutableConfig, default, ImplementsConfig
+from ezpyzy.config import Config, MultiConfig, ImmutableConfig, default, ImplementsConfig, construct_implementation_of
 from ezpyzy.test import test, Tests, Test, tests, test_groups
 from contextlib import nullcontext as collapsable # noqa
 from ezpyzy.debugging import debugging

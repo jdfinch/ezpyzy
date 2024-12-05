@@ -28,6 +28,14 @@ class ImplementsConfig:
     __config_implemented__: T.ClassVar[Config]
 
 
+CI = T.TypeVar('CI', bound='Config')
+def construct_implementation_of(config: CI) -> CI:
+    assert not isinstance(config, ImplementsConfig), \
+        f"Tried to construct implementation of already-implemented {config}. Please pass it's config instead."
+    assert hasattr(config, '__implementation__')
+    implemented = config.__implementation__(config) # noqa
+    return implemented
+
 class ConfigFields(dict[str, None]):
     def __init__(self, object, which_fields_serialization_strategy):
         dict.__init__(self)
