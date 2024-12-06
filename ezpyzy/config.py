@@ -146,18 +146,24 @@ class Configured(T.Generic[O]):
         @cl.contextmanager
         def configuring_context():
             old_configuring_value = self._set_fields_configured
+            old_do_not_config_value = self._do_not_configure
+            self._do_not_configure = False
             self._set_fields_configured = True
             yield self
             self._set_fields_configured = old_configuring_value
+            self._do_not_configure = old_do_not_config_value
         return configuring_context()
 
     def configuring_defaults(self):
         @cl.contextmanager
         def unconfigured_context():
             old_configuring_value = self._set_fields_unconfigured
+            old_do_not_config_value = self._do_not_configure
+            self._do_not_configure = False
             self._set_fields_unconfigured = True
             yield self
             self._set_fields_unconfigured = old_configuring_value
+            self._do_not_configure = old_do_not_config_value
         return unconfigured_context()
 
     def not_configuring(self):
@@ -277,6 +283,7 @@ class ConfigMeta(type):
         for setter_name, setter_descriptor in inherited_setters.items():
             setattr(cls, setter_name, setter_descriptor)
             setattr(cls, f'_{setter_name}', RawSetter(setter_name))
+        cls.__default_base__ = cls() # noqa
         return cls
 
 
@@ -286,7 +293,7 @@ class Config(metaclass=ConfigMeta):
     base: str | pl.Path | 'Config' | None = None
 
     def __post_init__(self):
-        if self.base:
+        if self.base is not None:
             if isinstance(self.base, str) and self.base.lstrip().startswith('{'):
                 '''load base from JSON str'''
                 decoder = ConfigJSONDecoder()
@@ -306,6 +313,13 @@ class Config(metaclass=ConfigMeta):
                 base = self.base
                 self.base = None
             self <<= base
+        else:
+            for subconfig_attr in self.configured.subconfigs:
+                subconfig = getattr(self, subconfig_attr, None)
+                default_subconfig = getattr(self.__class__.__default_base__, subconfig_attr, None)
+                if isinstance(subconfig, Config) and isinstance(default_subconfig, Config):
+                    with subconfig.configured.not_configuring():
+                        subconfig <<= default_subconfig
         if isinstance(self, ImplementsConfig):
             for attr, value in vars(self).items():
                 if attr != 'base' and type(value).__dict__.get('__implementation__') is not None:

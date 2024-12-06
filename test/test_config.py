@@ -263,15 +263,22 @@ with ez.test("Save Implementation and Load as Config Only"):
     assert config_only.tags == ['training']
     assert not hasattr(config_only, 'n_processes')
 
-with ez.test("Alternative Config: Strategy Override"):
+with ez.test("Alternative Config: Strategy Override", crash=True):
+
     @dc.dataclass
-    class BeamDecoding(Config):
-        name: str = 'beam'
+    class Decoding(Config):
+        name: str = None
+        def __post_init__(self):
+            super().__post_init__()
+            with self.configured.configuring():
+                self.name = self.__class__.__name__
+
+    @dc.dataclass
+    class BeamDecoding(Decoding):
         k: int = 5
 
     @dc.dataclass
-    class NoRepeatDecoding(Config):
-        name: str = 'norepeat'
+    class NoRepeatDecoding(Decoding):
         alpha: float = 0.6
 
     @dc.dataclass
@@ -280,14 +287,14 @@ with ez.test("Alternative Config: Strategy Override"):
         decoding: T.Union[BeamDecoding, NoRepeatDecoding] = BeamDecoding()
 
     model_a = Model(max_out=3)
-    assert model_a.decoding.name == 'beam'
+    assert model_a.decoding.name == 'BeamDecoding'
     assert model_a.decoding.k == 5
     model_b = Model(decoding=NoRepeatDecoding(alpha=0.7))
-    assert model_b.decoding.name == 'norepeat'
+    assert model_b.decoding.name == 'NoRepeatDecoding'
     assert model_b.decoding.alpha == 0.7
     model_a <<= model_b
     assert isinstance(model_a.decoding, NoRepeatDecoding)
-    assert model_a.decoding.name == 'norepeat'
+    assert model_a.decoding.name == 'NoRepeatDecoding'
     assert model_a.decoding.alpha == 0.7
 
 
