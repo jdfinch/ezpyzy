@@ -210,6 +210,7 @@ class ConfigMeta(type):
     def __new__(cls, name, bases: tuple, attrs):
         if name == 'Config':
             del attrs['__getattr__']
+        __default_subconfigs__ = {}
         for attr, default_value in attrs.items():
             if (attr in attrs.get('__annotations__', {})
                 and default_value is not None
@@ -217,12 +218,22 @@ class ConfigMeta(type):
                 and ClassVar_pattern.search(str(attrs['__annotations__'][attr])) is None
             ):
                 if isinstance(default_value, Config):
-                    for field in default_value.configured.and_unconfigured:
-                        default_value.configured.set(field, configured=False)
+                    subconfig_stack = [default_value]
+                    while subconfig_stack:
+                        subconfig = subconfig_stack.pop()
+                        for field in subconfig.configured.and_unconfigured:
+                            subconfig.configured.set(field, configured=False)
+                            if field in subconfig.configured.subconfigs:
+                                subconfig_stack.append(getattr(subconfig, field))
+                    __default_subconfigs__[attr] = default_value
                 attrs[attr] = default(default_value)
         inherited_setters = {}
         inherited_fields = set()
         for base in bases:
+            if '__default_subconfigs__' in base.__dict__:
+                __default_subconfigs__.update(
+                    (k,v) for k,v in base.__default_subconfigs__.items()
+                    if k not in __default_subconfigs__)
             if dc.is_dataclass(base):
                 for field in dc.fields(base):
                     if (isinstance(field.default, Setter) and field.name not in attrs and
@@ -237,6 +248,7 @@ class ConfigMeta(type):
                             attrs.setdefault('__annotations__', {})[field.name] = field.type
                     else:
                         inherited_fields.add(field.name)
+        attrs['__default_subconfigs__'] = __default_subconfigs__
         # if 'MultiConfig' in {base.__name__ for base in bases} and '__init__' not in attrs:
         #     def __multiconfig_subinit__(self, **subconfigs):
         #         super(type(self), self).__init__(**subconfigs)
@@ -283,7 +295,6 @@ class ConfigMeta(type):
         for setter_name, setter_descriptor in inherited_setters.items():
             setattr(cls, setter_name, setter_descriptor)
             setattr(cls, f'_{setter_name}', RawSetter(setter_name))
-        cls.__default_base__ = cls() # noqa
         return cls
 
 
@@ -316,16 +327,22 @@ class Config(metaclass=ConfigMeta):
         else:
             for subconfig_attr in self.configured.subconfigs:
                 subconfig = getattr(self, subconfig_attr, None)
-                default_subconfig = getattr(self.__class__.__default_base__, subconfig_attr, None)
+                default_subconfig = self.__class__.__default_subconfigs__.get(subconfig_attr, None)
                 if isinstance(subconfig, Config) and isinstance(default_subconfig, Config):
                     with subconfig.configured.not_configuring():
                         subconfig <<= default_subconfig
         if isinstance(self, ImplementsConfig):
-            for attr, value in vars(self).items():
-                if attr != 'base' and type(value).__dict__.get('__implementation__') is not None:
-                    implementation_cls = value.__implementation__
-                    implementation_obj = implementation_cls(base=value)
-                    setattr(self, attr, implementation_obj)
+            self.__implement__() # noqa
+
+    def __implement__(self):
+        for attr, value in vars(self).items():
+            if attr != 'base' and type(value).__dict__.get('__implementation__') is not None:
+                implementation_cls = value.__implementation__
+                implementation_obj = implementation_cls(base=value)
+                for field in value.configured.configured:
+                    implementation_obj.configured.set(field, configured=True)
+                setattr(self, attr, implementation_obj)
+                implementation_obj.__implement__()
 
     def __call__(self, **subconfigs: Config):
         with self.configured.configuring():
@@ -363,7 +380,10 @@ class Config(metaclass=ConfigMeta):
         Check whether the configuration matches other.
         """
         if isinstance(other, Config):
-            return (type(self) == type(other) and
+            return ((type(self) == type(other)
+                     or getattr(type(self), '__config_implemented__', None) is type(other)
+                     or getattr(type(other), '__config_implemented__', None) is type(self)
+                ) and
                 set(self.configured.and_unconfigured).issuperset(
                 set(other.configured.and_unconfigured)))
         elif isinstance(other, dict):
