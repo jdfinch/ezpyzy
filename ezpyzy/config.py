@@ -149,7 +149,16 @@ class Configured(T.Generic[O]):
             old_do_not_config_value = self._do_not_configure
             self._do_not_configure = False
             self._set_fields_configured = True
+            subconfig_contexts = []
+            for subconfig_name in self.subconfigs:
+                subconfig = getattr(self.object, subconfig_name, None)
+                if isinstance(subconfig, Config):
+                    context = subconfig.configured.configuring()
+                    subconfig_contexts.append(context)
+                    context.__enter__()
             yield self
+            for subconfig_context in subconfig_contexts:
+                subconfig_context.__exit__(None, None, None)
             self._set_fields_configured = old_configuring_value
             self._do_not_configure = old_do_not_config_value
         return configuring_context()
@@ -161,7 +170,16 @@ class Configured(T.Generic[O]):
             old_do_not_config_value = self._do_not_configure
             self._do_not_configure = False
             self._set_fields_unconfigured = True
+            subconfig_contexts = []
+            for subconfig_name in self.subconfigs:
+                subconfig = getattr(self.object, subconfig_name, None)
+                if isinstance(subconfig, Config):
+                    context = subconfig.configured.configuring_defaults()
+                    subconfig_contexts.append(context)
+                    context.__enter__()
             yield self
+            for subconfig_context in subconfig_contexts:
+                subconfig_context.__exit__(None, None, None)
             self._set_fields_unconfigured = old_configuring_value
             self._do_not_configure = old_do_not_config_value
         return unconfigured_context()
@@ -171,7 +189,16 @@ class Configured(T.Generic[O]):
         def not_configuring_context():
             old_configuring_value = self._do_not_configure
             self._do_not_configure = True
+            subconfig_contexts = []
+            for subconfig_name in self.subconfigs:
+                subconfig = getattr(self.object, subconfig_name, None)
+                if isinstance(subconfig, Config):
+                    context = subconfig.configured.not_configuring()
+                    subconfig_contexts.append(context)
+                    context.__enter__()
             yield self
+            for subconfig_context in subconfig_contexts:
+                subconfig_context.__exit__(None, None, None)
             self._do_not_configure = old_configuring_value
         return not_configuring_context()
 
