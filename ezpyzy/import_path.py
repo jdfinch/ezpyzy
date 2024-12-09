@@ -12,7 +12,7 @@ def get_import_path(cls_or_fn):
     elif module == '__main__':
         module_path = pl.Path(sys.modules[module].__file__)
         shortest_common_path = None
-        for pathstr in [os.getcwd(), *os.environ['PYTHONPATH'].split(':')]:
+        for pathstr in [os.getcwd(), *os.environ.get('PYTHONPATH', '').split(':')]:
             import_from_path = pl.Path(pathstr)
             if module_path.is_relative_to(import_from_path):
                 common_path = module_path.relative_to(import_from_path)
@@ -23,7 +23,7 @@ def get_import_path(cls_or_fn):
 
 def import_obj_from_path(import_path):
     module, name = import_path.rsplit('.', 1)
-    main_module_path = pl.Path(sys.modules['__main__'].__file__)
+    main_module_path = pl.Path(sys.modules['__main__'].__file__).absolute()
     cwd = pl.Path.cwd()
     main_module_path = main_module_path.relative_to(cwd)
     main_module = '.'.join((*main_module_path.parts[:-1], main_module_path.stem))
