@@ -515,6 +515,9 @@ class ConfigJSONDecoder(json.JSONDecoder):
     def object_hook(self, obj):
         if '__class__' in obj:
             cls = import_obj_from_path(obj.pop('__class__'))
+            config_cls = getattr(cls, '__config_implemented__', None)
+            if config_cls is not None:
+                cls = config_cls
             fields = {field.name for field in dc.fields(cls)}
             config = cls(**{var: val for var, val in obj.items() if var in fields}) # noqa
             if isinstance(config, MultiConfig):
