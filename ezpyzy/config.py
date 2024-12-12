@@ -389,7 +389,10 @@ class Config(metaclass=ConfigMeta):
     def __setattr__(self, key, value):
         object.__setattr__(self, key, value)
         if hasattr(self, 'configured'):
-            self.configured.set(key, value, configured=None)
+            if isinstance(getattr(self, key, None), (RawSetter, Setter)):
+                self.configured.set(key[1:], value, configured=None)
+            else:
+                self.configured.set(key, value, configured=None)
         return
 
     def __getattr__(self, item):
