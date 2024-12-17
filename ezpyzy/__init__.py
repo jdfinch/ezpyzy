@@ -23,6 +23,7 @@ from ezpyzy.format import Savable, Text, CSV, JSON, Bytes, Pickle, TSPy, Pyr, fo
 from ezpyzy.import_path import get_import_path, import_obj_from_path
 from ezpyzy.job_queue import JobQueue
 from ezpyzy.multiprocess import multiprocess
+from ezpyzy.get import op, get
 from ezpyzy.peek import peek
 from dataclasses import replace as copy # noqa
 from ezpyzy.scope import Scope
