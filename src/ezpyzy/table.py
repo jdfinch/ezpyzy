@@ -18,16 +18,31 @@ class Table(typing.Generic[T]):
         self.rows = []
         if key:
             self.ids = {}
-            self.id_function = key
+            self._id_function = key
         else:
             self.ids = None
-            self.id_function = None
+            self._id_function = None
         for items in items:
             self.extend(items)
 
+    @property
+    def id_function(self):
+        return self._id_function
+    
+    @id_function.setter
+    def id_function(self, id_function: typing.Callable[[T], typing.Hashable]|None):
+        if id_function is None:
+            self.ids = None
+            self._id_function = None
+        else:
+            ids = {id_function(item): item for item in self}
+            assert len(ids) == len(self), f"Hash collision created by new id_function"
+            self.ids = ids
+            self._id_function = id_function
+
     def add(self, item: T):
-        if self.id_function:
-            key = self.id_function(item)
+        if self._id_function:
+            key = self._id_function(item)
             if key not in self.ids:
                 self.rows.append(item)
             self.ids[key] = item
@@ -36,16 +51,16 @@ class Table(typing.Generic[T]):
         return self
 
     def append(self, item: T):
-        if self.id_function:
-            key = self.id_function(item)
+        if self._id_function:
+            key = self._id_function(item)
             assert key not in self.ids, f"Item with ID {key} already exists."
             self.ids[key] = item
         self.rows.append(item)
         return self
 
     def extend(self, items: typing.Iterable[T]):
-        if self.id_function:
-            keys = [self.id_function(item) for item in items]
+        if self._id_function:
+            keys = [self._id_function(item) for item in items]
             for key in keys:
                 assert key not in self.ids, f"Item with ID {key} already exists."
             self.ids.update(zip(keys, items))
@@ -53,8 +68,8 @@ class Table(typing.Generic[T]):
         return self
 
     def update(self, items: typing.Iterable[T]):
-        if self.id_function:
-            keys = (self.id_function(item) for item in items)
+        if self._id_function:
+            keys = (self._id_function(item) for item in items)
             for key, item in zip(keys, items):
                 if key not in self.ids:
                     self.ids[key] = item
@@ -105,7 +120,7 @@ class Table(typing.Generic[T]):
         selection = self.__class__(self.ids[key] for key in keys)
         return selection
     
-    def gather(self, indices: typing.Sequence[int]) -> 'Table[T]':
+    def lookup(self, indices: typing.Sequence[int]) -> 'Table[T]':
         gathered = self.__class__(self[index] for index in indices)
         return gathered
     
@@ -114,6 +129,20 @@ class Table(typing.Generic[T]):
         for item in self:
             key = by(item)
             groups.setdefault(key, self.__class__()).append(item)
+        return groups
+
+    def sort(self, by: typing.Callable[[T], typing.Any]|typing.Iterable, reverse=False):
+        if not callable(by):
+            items_and_keys = [(item, key) for item, key in zip(self, by)]
+            assert len(items_and_keys) == len(self), f"Sort by sequence must be the same length as the Table"
+            items_and_keys.sort(key=lambda x: x[1], reverse=reverse)
+        else:
+            self.rows.sort(key=by, reverse=reverse)
+        return self
+    
+    def delete(self, keys: typing.Iterable):
+        for key in keys:
+            ...
 
     # join_inner
 
@@ -124,6 +153,15 @@ class Table(typing.Generic[T]):
     # join_outer
 
     # join_cartesian
+
+
+    def render(self, columns: dict[str, typing.Callable[[T], typing.Any]]) -> str:
+        ...
+
+    def display(self, columns: dict[str, typing.Callable[[T], typing.Any]]) -> str:
+        rendered = self.render(columns)
+        print(rendered)
+        return rendered
 
 
 
