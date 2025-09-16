@@ -1,14 +1,45 @@
-[tool.poetry]
-name = "ezpyzy"
-version = "0.2.0"
-description = "Utility functions solving common but annoying problems."
-authors = ["jdfinch <jdfinch@emory.edu>"]
-readme = "README.md"
-
-[tool.poetry.dependencies]
-python = "^3.8"
-
-
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ezpyzy"
+version = "0.1.0"
+description = "A tiny, friendly Python utility library — ezpyzy."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [
+  { name = "James Finch", email = "you@example.com" }
+]
+keywords = ["utilities", "ez", "attrs", "cattrs"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Typing :: Typed"
+]
+
+dependencies = [
+  "attrs>=23.2.0",
+  "cattrs>=23.2.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/jdfinch/ezpyzy"
+Issues = "https://github.com/jdfinch/ezpyzy/issues"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "pytest-cov>=5.0.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ezpyzy"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --cov=ezpyzy --cov-report=term-missing"
+testpaths = ["tests"]
