@@ -40,3 +40,9 @@ ENV/
 
 # macOS
 .DS_Store
+
+# git worktree
+.worktree
+
+# local only
+/data
