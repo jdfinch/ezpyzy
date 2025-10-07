@@ -34,7 +34,9 @@ class File(typing.Generic[FT]):
     def read_bytes(self):
         return self.path.read_bytes()
     
-    def load(self) -> FT:
+    def load(self, type: typing.Type[FT] = None) -> FT:
+        if type is not None:
+            self.type = type
         if self.format.binary:
             content = self.read_bytes()
         else:
@@ -89,7 +91,8 @@ class SerializationFormat(typing.Generic[T]):
 
     def __attrs_post_init__(self):
         for extension in self.extensions:
-            formats[extension] = self
+            if extension not in formats:
+                formats[extension] = self
 
     @property
     def extension(self):
@@ -231,6 +234,7 @@ if __name__ == '__main__':
     class Foo:
         bar: tuple[str,...]
         bat: int
+        baz: bytes = b'abc123'
         
 
     foo = Foo(('hello', 'world'), 2)

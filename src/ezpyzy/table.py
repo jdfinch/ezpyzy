@@ -2,14 +2,11 @@
 import typing
 
 
-
 T = typing.TypeVar('T')
 G = typing.TypeVar('G')
 A = typing.TypeVar('A')
 E = typing.TypeVar('E')
 R = typing.TypeVar('R')
-
-
 
 
 class Table(typing.Generic[T]):
