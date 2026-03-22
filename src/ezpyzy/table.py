@@ -1,3 +1,19 @@
+"""Lightweight typed tables for row-oriented Python data.
+
+`Table` is a small container around a list of row objects. Rows may be plain
+Python objects, dataclasses, dict-like objects, tuples, or lists depending on
+the operation being used. A table can optionally be keyed by a key function,
+which enables fast id-based lookup, selection, and deletion.
+
+The design is intentionally simple:
+
+- positional operations work on row indices
+- id-based operations require `key=`
+- mutating methods preserve `rows` and `ids` container identity where practical
+- joins return tuple rows rather than synthesizing merged objects
+- rendering is intended for readable debugging and console inspection
+"""
+
 import typing
 
 
@@ -10,37 +26,68 @@ R = typing.TypeVar('R')
 
 
 class Table(typing.Generic[T]):
+    """A row-oriented container with optional id-based indexing.
+
+    Parameters
+    ----------
+    *items:
+        Zero or more iterables of rows to load into the table.
+    key:
+        Optional callable that maps each row to a unique hashable id. When
+        provided, `Table.ids` is maintained as a `{id: index}` mapping.
+
+    Notes
+    -----
+    `Table.rows` is the underlying row list.
+    `Table.ids` is either `None` or a `{id: index}` mapping.
+
+    Most methods are intentionally split into positional and id-based forms:
+
+    - positional: `__getitem__`, `slice`, `delete`
+    - id-based: `get`, `try_get`, `select`, `discard`, `remove`
+    - projection: `map`, `try_map`
+    """
 
     def __init__(self, *items: typing.Iterable[T], key:typing.Callable[[T], typing.Hashable] = None):
         self.rows = []
         if key:
             self.ids = {}
-            self._id_function = key
+            self._key = key
         else:
             self.ids = None
-            self._id_function = None
+            self._key = None
         for items in items:
             self.extend(items)
 
     @property
-    def id_function(self):
-        return self._id_function
+    def key(self):
+        """Return the key function used by this table, if any."""
+        return self._key
     
-    @id_function.setter
-    def id_function(self, id_function: typing.Callable[[T], typing.Hashable]|None):
-        if id_function is None:
+    @key.setter
+    def key(self, key: typing.Callable[[T], typing.Hashable]|None):
+        """Set or clear the table's key function.
+
+        Setting a key function rebuilds `ids` from the current rows and requires
+        the computed ids to be unique.
+        """
+        if key is None:
             self.ids = None
-            self._id_function = None
+            self._key = None
         else:
-            ids = {id_function(item): item for item in self}
-            assert len(ids) == len(self), f"Hash collision created by new id_function"
+            ids = {key(item): i for i, item in enumerate(self)}
+            assert len(ids) == len(self), f"Hash collision created by new key"
             self.ids = ids
-            self._id_function = id_function
+            self._key = key
     
     def add(self, item: T):
-        """Add an item to the Table, removing any existing items with its ID, at a given index"""
-        if self._id_function:
-            key = self._id_function(item)
+        """Append a row unless its id is already present.
+
+        On keyed tables, duplicate ids are ignored.
+        On unkeyed tables, this behaves like `list.append`.
+        """
+        if self._key:
+            key = self._key(item)
             if key not in self.ids:
                 self.ids[key] = len(self)
                 self.rows.append(item)
@@ -50,41 +97,45 @@ class Table(typing.Generic[T]):
             self.rows.append(item)
 
     def insert(self, item: T, index: int):
-        """Add an item to the Table, if its ID does not already exist in the table"""
-        if self._id_function:
-            key = self._id_function(item)
+        """Insert a row at a positional index.
+
+        On keyed tables, the row id must not already exist.
+        """
+        if self._key:
+            key = self._key(item)
             assert key not in self.ids, f"Item with ID {key} already exists."
-            self.ids[key] = index
-            for i in range(index, len(self.rows)):
-                self.ids[self._id_function(self.rows[i])] += 1
             self.rows.insert(index, item)
+            self.ids.clear()
+            self.ids.update((self._key(row), i) for i, row in enumerate(self.rows))
         else:
-            self.rows.insert(item, index)    
+            self.rows.insert(index, item)
 
     def append(self, item: T):
-        """Add an item to the Table, erroring if an item that already has its ID exists."""
-        if self._id_function:
-            key = self._id_function(item)
+        """Append a row and error if its id already exists."""
+        if self._key:
+            key = self._key(item)
             assert key not in self.ids, f"Item with ID {key} already exists."
-            self.ids[key] = item
+            self.ids[key] = len(self)
         self.rows.append(item)
         return self
 
     def extend(self, items: typing.Iterable[T]):
-        """Add items to the Table, erroring if an item that already has one of their IDs exists."""
-        if self._id_function:
-            keys = [self._id_function(item) for item in items]
+        """Append multiple rows and error on duplicate ids."""
+        items = list(items)
+        if self._key:
+            keys = [self._key(item) for item in items]
             for key in keys:
                 assert key not in self.ids, f"Item with ID {key} already exists."
-            self.ids.update(zip(keys, items))
+            self.ids.update((key, i) for i, key in enumerate(keys, start=len(self.rows)))
         self.rows.extend(items)
         return self
 
     def update(self, items: typing.Iterable[T]):
-        """Add items to the Table, ignoring items whose IDs are already in the Table"""
-        if self._id_function:
-            keys = (self._id_function(item) for item in items)
-            for key, item in zip(keys, items):
+        """Append multiple rows, ignoring any keyed duplicates already present."""
+        items = list(items)
+        if self._key:
+            for item in items:
+                key = self._key(item)
                 if key not in self.ids:
                     self.ids[key] = len(self.rows)
                     self.rows.append(item)
@@ -93,13 +144,32 @@ class Table(typing.Generic[T]):
         return self
 
     def __iter__(self):
+        """Iterate over rows in order."""
         return iter(self.rows)
     
     def __len__(self):
+        """Return the number of rows."""
         return len(self.rows)
 
-    def try_get(self, getter: typing.Callable[[T], A]) -> 'Table[A]':
-        """Produce a new Table by attempting to apply a predicate over each row of this table"""
+    def copy(self) -> 'Table[T]':
+        """Return a shallow copy of the table, preserving the key function."""
+        copied = self.__class__(key=self._key)
+        copied.extend(self.rows)
+        return copied
+
+    def clear(self) -> 'Table[T]':
+        """Remove all rows in place while preserving container identity."""
+        self.rows.clear()
+        if self._key is not None:
+            self.ids.clear()
+        return self
+
+    def try_map(self, getter: typing.Callable[[T], A]) -> 'Table[A]':
+        """Map rows into a new table, returning `None` for common missing-value errors.
+
+        This is useful for attribute and item access chains where intermediate
+        values may be missing or `None`.
+        """
         result = Table()
         for row in self:
             try:
@@ -119,26 +189,65 @@ class Table(typing.Generic[T]):
                     raise
         return result
     
-    def get(self, getter: typing.Callable[[T], E]) -> 'Table[E]':
-        """Produce a new Table by applying a predicate over each row of this table"""
+    def map(self, getter: typing.Callable[[T], E]) -> 'Table[E]':
+        """Map rows into a new table by applying a callable to each row."""
         gotten = self.__class__()
         gotten.extend(getter(item) for item in self)
         return gotten
+
+    def get(self, key: typing.Hashable) -> T:
+        """Fetch a single row by id.
+
+        Requires the table to be keyed. Missing ids raise `KeyError`.
+        """
+        assert self._key is not None, f"Cannot get by id from a Table with no key"
+        return self.rows[self.ids[key]]
+
+    def try_get(self, key: typing.Hashable) -> T|None:
+        """Fetch a single row by id, returning `None` when the id is absent."""
+        assert self._key is not None, f"Cannot get by id from a Table with no key"
+        if key not in self.ids:
+            return None
+        return self.rows[self.ids[key]]
+
+    def keys(self):
+        """Return row ids in row order."""
+        assert self._key is not None, f"Cannot get keys from a Table with no key"
+        return self.ids.keys()
+
+    def items(self):
+        """Iterate over `(id, row)` pairs in row order."""
+        assert self._key is not None, f"Cannot get items from a Table with no key"
+        return zip(self.ids.keys(), self.rows)
+
+    def has(self, key: typing.Hashable) -> bool:
+        """Return whether an id exists in the table."""
+        assert self._key is not None, f"Cannot check ids on a Table with no key"
+        return key in self.ids
 
     def filter(
         self,
         by: typing.Callable[[T], bool]|typing.Sequence[bool]|dict|set = None
     ) -> 'Table[T]':
-        """Filter rows to leave only those with a True predicate, or with IDs in the dict/set"""
+        """Filter rows in place.
+
+        Supported inputs:
+
+        - predicate callable: keep rows where the predicate is truthy
+        - boolean sequence: keep rows paired with a truthy flag
+        - dict or set: on keyed tables, keep rows whose ids are members;
+          on unkeyed tables, keep rows that are direct members
+        - `None`: keep all rows unchanged
+        """
         if by is None:
             filtered = list(self.rows)
         elif callable(by):
             filtered = [item for item in self if by(item)]
         elif isinstance(by, (dict, set)):
-            if self._id_function is None:
+            if self._key is None:
                 filtered = [item for item in self if item in by]
             else:
-                filtered = [item for item in self if self._id_function(item) in by]
+                filtered = [item for item in self if self._key(item) in by]
         else:
             items_and_matches = [(item, match) for item, match in zip(self, by)]
             assert len(items_and_matches) == len(self), (
@@ -146,21 +255,22 @@ class Table(typing.Generic[T]):
             )
             filtered = [item for item, match in items_and_matches if match]
         self.rows[:] = filtered
-        if self._id_function is not None:
+        if self._key is not None:
             self.ids.clear()
-            self.ids.update((self._id_function(item), item) for item in self.rows)
+            self.ids.update((self._key(item), i) for i, item in enumerate(self.rows))
         return self
     
     def select(self, ids: typing.Collection) -> 'Table[T]':
-        """Produce a new Table from this Table's rows by ids"""
-        assert self._id_function is not None, f"Cannot select by id from a Table with no id_function"
-        selected = self.__class__(key=self._id_function)
+        """Return a new keyed table containing rows for the given ids in id order."""
+        assert self._key is not None, f"Cannot select by id from a Table with no key"
+        selected = self.__class__(key=self._key)
         for key in ids:
-            selected.append(self.ids[key])
+            selected.append(self.rows[self.ids[key]])
         return selected
     
     def __getitem__(self, indices: int|slice|typing.Sequence[int]) -> 'Table[T]':
-        sliced = self.__class__(key=self._id_function)
+        """Return a new table by positional index, slice, or index sequence."""
+        sliced = self.__class__(key=self._key)
         if isinstance(indices, slice):
             sliced.extend(self.rows[indices])
         elif isinstance(indices, int):
@@ -171,51 +281,57 @@ class Table(typing.Generic[T]):
         return sliced
     
     def slice(self, indices: int|slice|typing.Sequence[int]) -> 'Table[T]':
+        """Keep rows in place by positional index, slice, or index sequence."""
         sliced = self[indices]
         self.rows[:] = sliced.rows
-        if self._id_function is not None:
+        if self._key is not None:
             self.ids.clear()
             self.ids.update(sliced.ids)
         return self
 
     def group(self, by: typing.Callable[[T], G]) -> dict[G, 'Table[T]']:
+        """Group rows into keyed subtables by a grouping function."""
         groups = {}
         for item in self:
             key = by(item)
             if key not in groups:
-                groups[key] = self.__class__(key=self._id_function)
+                groups[key] = self.__class__(key=self._key)
             groups[key].append(item)
         return groups
 
     def sort(self, by: typing.Callable[[T], typing.Any]|typing.Iterable, reverse=False):
+        """Sort rows in place by a key function or a parallel sequence of keys."""
         if not callable(by):
             items_and_keys = [(item, key) for item, key in zip(self, by)]
             assert len(items_and_keys) == len(self), f"Sort by sequence must be the same length as the Table"
             items_and_keys.sort(key=lambda x: x[1], reverse=reverse)
-            self.rows = [item for item, key in items_and_keys]
+            self.rows[:] = [item for item, key in items_and_keys]
         else:
             self.rows.sort(key=by, reverse=reverse)
         return self
     
     def discard(self, ids: typing.Iterable[typing.Hashable]) -> 'Table[T]':
-        assert self._id_function is not None, f"Cannot discard by id from a Table with no id_function"
+        """Remove rows by id, ignoring ids that are not present."""
+        assert self._key is not None, f"Cannot discard by id from a Table with no key"
         discarded = set(ids)
-        self.rows[:] = [item for item in self.rows if self._id_function(item) not in discarded]
+        self.rows[:] = [item for item in self.rows if self._key(item) not in discarded]
         self.ids.clear()
-        self.ids.update((self._id_function(item), item) for item in self.rows)
+        self.ids.update((self._key(item), i) for i, item in enumerate(self.rows))
         return self
 
     def remove(self, ids: typing.Iterable[typing.Hashable]) -> 'Table[T]':
-        assert self._id_function is not None, f"Cannot remove by id from a Table with no id_function"
+        """Remove rows by id, erroring if any requested id is absent."""
+        assert self._key is not None, f"Cannot remove by id from a Table with no key"
         removed = set(ids)
         missing = removed.difference(self.ids)
         assert not missing, f"Items with IDs {missing} do not exist."
-        self.rows[:] = [item for item in self.rows if self._id_function(item) not in removed]
+        self.rows[:] = [item for item in self.rows if self._key(item) not in removed]
         self.ids.clear()
-        self.ids.update((self._id_function(item), item) for item in self.rows)
+        self.ids.update((self._key(item), i) for i, item in enumerate(self.rows))
         return self
 
     def delete(self, indices: typing.Union[int, 'slice', typing.Sequence[int]]) -> 'Table[T]':
+        """Remove rows in place by position."""
         if isinstance(indices, int):
             del self.rows[indices]
         elif isinstance(indices, slice):
@@ -229,12 +345,13 @@ class Table(typing.Generic[T]):
                 raise IndexError(f"Table deletion index out of range: {missing[0]}")
             for index in sorted(set(normalized), reverse=True):
                 del self.rows[index]
-        if self._id_function is not None:
+        if self._key is not None:
             self.ids.clear()
-            self.ids.update((self._id_function(item), item) for item in self.rows)
+            self.ids.update((self._key(item), i) for i, item in enumerate(self.rows))
         return self
 
     def __delitem__(self, indices: typing.Union[int, 'slice', typing.Sequence[int]]):
+        """Delete rows by position using `del table[...]` syntax."""
         self.delete(indices)
 
     def _join_index(
@@ -243,10 +360,10 @@ class Table(typing.Generic[T]):
         against: typing.Callable[[U], typing.Hashable]|None,
     ) -> dict[typing.Hashable, list[tuple[int, U]]]:
         if against is None:
-            assert other.id_function is not None, (
-                f"Cannot join against a Table with no id_function without an against selector"
+            assert other.key is not None, (
+                f"Cannot join against a Table with no key without an against selector"
             )
-            against = other.id_function
+            against = other.key
         index = {}
         for i, item in enumerate(other):
             key = against(item)
@@ -259,6 +376,7 @@ class Table(typing.Generic[T]):
         on: typing.Callable[[T], typing.Hashable],
         against: typing.Callable[[U], typing.Hashable]|None = None,
     ) -> 'Table[tuple[T, U|None]]':
+        """Alias for `join_left`."""
         return self.join_left(other, on, against)
 
     def join_inner(
@@ -267,6 +385,7 @@ class Table(typing.Generic[T]):
         on: typing.Callable[[T], typing.Hashable],
         against: typing.Callable[[U], typing.Hashable]|None = None,
     ) -> 'Table[tuple[T, U]]':
+        """Return matching row pairs only."""
         right_index = self._join_index(other, against)
         joined = Table()
         for left in self:
@@ -281,6 +400,7 @@ class Table(typing.Generic[T]):
         on: typing.Callable[[T], typing.Hashable],
         against: typing.Callable[[U], typing.Hashable]|None = None,
     ) -> 'Table[tuple[T, U|None]]':
+        """Return a left join as `(left, right_or_none)` tuples."""
         right_index = self._join_index(other, against)
         joined = Table()
         for left in self:
@@ -299,11 +419,12 @@ class Table(typing.Generic[T]):
         on: typing.Callable[[T], typing.Hashable],
         against: typing.Callable[[U], typing.Hashable]|None = None,
     ) -> 'Table[tuple[T|None, U]]':
+        """Return a right join as `(left_or_none, right)` tuples."""
         if against is None:
-            assert other.id_function is not None, (
-                f"Cannot join against a Table with no id_function without an against selector"
+            assert other.key is not None, (
+                f"Cannot join against a Table with no key without an against selector"
             )
-            against = other.id_function
+            against = other.key
         left_index = {}
         for left in self:
             key = on(left)
@@ -325,6 +446,7 @@ class Table(typing.Generic[T]):
         on: typing.Callable[[T], typing.Hashable],
         against: typing.Callable[[U], typing.Hashable]|None = None,
     ) -> 'Table[tuple[T|None, U|None]]':
+        """Return an outer join as `(left_or_none, right_or_none)` tuples."""
         right_index = self._join_index(other, against)
         joined = Table()
         matched_right_indices = set()
@@ -343,6 +465,7 @@ class Table(typing.Generic[T]):
         return joined
 
     def join_cartesian(self, other: 'Table[U]') -> 'Table[tuple[T, U]]':
+        """Return the cartesian product as `(left, right)` tuples."""
         joined = Table()
         for left in self:
             for right in other:
@@ -377,9 +500,44 @@ class Table(typing.Generic[T]):
         cols: dict[str, str|bool|typing.Callable[[T], typing.Any]]|None = None,
         cell_width: int = 10,
     ) -> str:
+        """Render the table as a readable plain-text dump.
+
+        Parameters
+        ----------
+        rows:
+            Optional maximum number of rows to show.
+        width:
+            Maximum line width for the rendered output.
+        cols:
+            Optional column configuration.
+            Values may be:
+
+            - `True`: include the attribute using the same column name
+            - `False`: exclude the inferred attribute
+            - `str`: rename an existing attribute into a new column name
+            - callable: compute a display value for the column
+        cell_width:
+            Minimum truncation target for columns before columns are dropped
+            from the right to satisfy `width`.
+
+        Notes
+        -----
+        Empty tables render a title only.
+        """
         rows_ = list(self.rows)
+        type_names = []
+        for row in rows_:
+            name = type(row).__name__
+            if name not in type_names:
+                type_names.append(name)
+        if type_names:
+            title = f"Table of {', '.join(type_names)} with {len(rows_)} rows"
+        else:
+            title = f"Table with {len(rows_)} rows"
         if not rows_:
-            return ''
+            if len(title) > width:
+                title = title[:max(width - 2, 0)] + ('..' if width >= 2 else '')
+            return title
         displayed_rows = rows_ if rows is None else rows_[:rows]
 
         tuple_rows = all(isinstance(row, (tuple, list)) for row in displayed_rows)
@@ -480,12 +638,6 @@ class Table(typing.Generic[T]):
                 return '.' * width_for_cell
             return f"{cell[:width_for_cell - 2]}..".ljust(width_for_cell)
 
-        type_names = []
-        for row in rows_:
-            name = type(row).__name__
-            if name not in type_names:
-                type_names.append(name)
-        title = f"Table of {', '.join(type_names)} with {len(rows_)} rows"
         if len(title) > width:
             title = fit(title, width)
 
@@ -504,6 +656,7 @@ class Table(typing.Generic[T]):
         cols: dict[str, str|bool|typing.Callable[[T], typing.Any]]|None = None,
         cell_width: int = 10,
     ) -> str:
+        """Print `render(...)` and return the rendered string."""
         rendered = self.render(rows=rows, width=width, cols=cols, cell_width=cell_width)
         print(rendered)
         return rendered
@@ -528,8 +681,8 @@ if __name__ == '__main__':
     c = Foo(['h', 'w'], a)
 
     table = Table((a, b, c)) 
-    print(f"{list(table.get(lambda x: x.bar[0])) = }")
-    print(f"{list(table.get(lambda x: x.bar[1].capitalize())) = }")
-    print(f"{list(table.get(lambda x: x.bat)) = }")
+    print(f"{list(table.map(lambda x: x.bar[0])) = }")
+    print(f"{list(table.map(lambda x: x.bar[1].capitalize())) = }")
+    print(f"{list(table.map(lambda x: x.bat)) = }")
 
     table.display(width=30)
